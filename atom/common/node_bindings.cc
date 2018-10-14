@@ -226,6 +226,9 @@ void NodeBindings::Initialize() {
   const char** argv = {&prog_name};
   const char** exec_argv = nullptr;
 
+  // TODO(codebytere): this is going to be deprecated in the near future
+  // in favor of Init(std::vector<std::string>* argv,
+  //        std::vector<std::string>* exec_argv)
   node::Init(&argc, argv, &exec_argc, &exec_argv);
 
 #if defined(OS_WIN)
