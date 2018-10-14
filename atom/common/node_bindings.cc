@@ -215,11 +215,17 @@ void NodeBindings::Initialize() {
 
   // Init node.
   // (we assume node::Init would not modify the parameters under embedded mode).
-  // NOTE: If you change this line, please ping @codebytere or @MarshallOfSound
+  std::unique_ptr<base::Environment> env(base::Environment::Create());
+
   int argc = 0;
   int exec_argc = 0;
-  const char** argv = nullptr;
+
+  // pass non-null program name to argv so it doesn't crash
+  // trying to index into a nullptr
+  const char* prog_name = "electron";
+  const char** argv = {&prog_name};
   const char** exec_argv = nullptr;
+
   node::Init(&argc, argv, &exec_argc, &exec_argv);
 
 #if defined(OS_WIN)
