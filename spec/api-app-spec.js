@@ -358,6 +358,28 @@ describe('app module', () => {
       })
       w = new BrowserWindow({ show: false })
     })
+
+    it('should emit remote-require event when remote.require() is invoked', (done) => {
+      app.once('remote-require', (event, webContents, moduleName) => {
+        expect(webContents).to.equal(w.webContents)
+        expect(moduleName).to.equal('test')
+        done()
+      })
+      w = new BrowserWindow({ show: false })
+      w.loadURL('about:blank')
+      w.webContents.executeJavaScript(`require('electron').remote.require('test')`)
+    })
+
+    it('should emit remote-get-global event when remote.getGlobal() is invoked', (done) => {
+      app.once('remote-get-global', (event, webContents, globalName) => {
+        expect(webContents).to.equal(w.webContents)
+        expect(globalName).to.equal('test')
+        done()
+      })
+      w = new BrowserWindow({ show: false })
+      w.loadURL('about:blank')
+      w.webContents.executeJavaScript(`require('electron').remote.getGlobal('test')`)
+    })
   })
 
   describe('app.setBadgeCount', () => {
@@ -435,7 +457,7 @@ describe('app module', () => {
     it('sets and returns the app as a login item', done => {
       app.setLoginItemSettings({ openAtLogin: true })
       // Wait because login item settings are not applied immediately in MAS build
-      const delay = process.mas ? 150 : 0
+      const delay = process.mas ? 250 : 0
       setTimeout(() => {
         expect(app.getLoginItemSettings()).to.deep.equal({
           openAtLogin: true,
@@ -448,15 +470,20 @@ describe('app module', () => {
       }, delay)
     })
 
-    it('adds a login item that loads in hidden mode', () => {
+    it('adds a login item that loads in hidden mode', done => {
       app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true })
-      expect(app.getLoginItemSettings()).to.deep.equal({
-        openAtLogin: true,
-        openAsHidden: process.platform === 'darwin' && !process.mas, // Only available on macOS
-        wasOpenedAtLogin: false,
-        wasOpenedAsHidden: false,
-        restoreState: false
-      })
+      // Wait because login item settings are not applied immediately in MAS build
+      const delay = process.mas ? 250 : 0
+      setTimeout(() => {
+        expect(app.getLoginItemSettings()).to.deep.equal({
+          openAtLogin: true,
+          openAsHidden: process.platform === 'darwin' && !process.mas, // Only available on macOS
+          wasOpenedAtLogin: false,
+          wasOpenedAsHidden: false,
+          restoreState: false
+        })
+        done()
+      }, delay)
     })
 
     it('correctly sets and unsets the LoginItem as hidden', function () {

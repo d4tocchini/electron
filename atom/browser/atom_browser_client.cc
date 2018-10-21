@@ -22,8 +22,12 @@
 #include "atom/browser/atom_speech_recognition_manager_delegate.h"
 #include "atom/browser/child_web_contents_tracker.h"
 #include "atom/browser/io_thread.h"
+#include "atom/browser/media/media_capture_devices_dispatcher.h"
 #include "atom/browser/native_window.h"
+#include "atom/browser/notifications/notification_presenter.h"
+#include "atom/browser/notifications/platform_notification_service.h"
 #include "atom/browser/session_preferences.h"
+#include "atom/browser/ui/devtools_manager_delegate.h"
 #include "atom/browser/web_contents_permission_helper.h"
 #include "atom/browser/web_contents_preferences.h"
 #include "atom/browser/window_list.h"
@@ -492,6 +496,11 @@ void AtomBrowserClient::GetAdditionalAllowedSchemesForFileSystem(
   additional_schemes->push_back(content::kChromeDevToolsScheme);
 }
 
+void AtomBrowserClient::GetAdditionalWebUISchemes(
+    std::vector<std::string>* additional_schemes) {
+  additional_schemes->push_back(content::kChromeDevToolsScheme);
+}
+
 void AtomBrowserClient::SiteInstanceDeleting(
     content::SiteInstance* site_instance) {
   // We are storing weak_ptr, is it fundamental to maintain the map up-to-date
@@ -673,6 +682,30 @@ AtomBrowserClient::CreateThrottlesForNavigation(
   std::vector<std::unique_ptr<content::NavigationThrottle>> throttles;
   throttles.push_back(std::make_unique<AtomNavigationThrottle>(handle));
   return throttles;
+}
+
+content::MediaObserver* AtomBrowserClient::GetMediaObserver() {
+  return MediaCaptureDevicesDispatcher::GetInstance();
+}
+
+content::DevToolsManagerDelegate*
+AtomBrowserClient::GetDevToolsManagerDelegate() {
+  return new DevToolsManagerDelegate;
+}
+
+NotificationPresenter* AtomBrowserClient::GetNotificationPresenter() {
+  if (!notification_presenter_) {
+    notification_presenter_.reset(NotificationPresenter::Create());
+  }
+  return notification_presenter_.get();
+}
+
+content::PlatformNotificationService*
+AtomBrowserClient::GetPlatformNotificationService() {
+  if (!notification_service_) {
+    notification_service_.reset(new PlatformNotificationService(this));
+  }
+  return notification_service_.get();
 }
 
 }  // namespace atom

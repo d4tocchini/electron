@@ -15,7 +15,9 @@
 #include "atom/browser/net/resolve_proxy_helper.h"
 #include "atom/browser/pref_store_delegate.h"
 #include "atom/browser/special_storage_policy.h"
+#include "atom/browser/ui/inspectable_web_contents_impl.h"
 #include "atom/browser/web_view_manager.h"
+#include "atom/browser/zoom_level_delegate.h"
 #include "atom/common/atom_version.h"
 #include "atom/common/chrome_version.h"
 #include "atom/common/options_switches.h"
@@ -27,8 +29,6 @@
 #include "base/threading/sequenced_task_runner_handle.h"
 #include "base/threading/thread_restrictions.h"
 #include "brightray/browser/brightray_paths.h"
-#include "brightray/browser/inspectable_web_contents_impl.h"
-#include "brightray/browser/zoom_level_delegate.h"
 #include "brightray/common/application_info.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
@@ -152,9 +152,9 @@ void AtomBrowserContext::InitPrefs() {
   registry->RegisterFilePathPref(prefs::kDownloadDefaultDirectory,
                                  download_dir);
   registry->RegisterDictionaryPref(prefs::kDevToolsFileSystemPaths);
-  brightray::InspectableWebContentsImpl::RegisterPrefs(registry.get());
-  brightray::MediaDeviceIDSalt::RegisterPrefs(registry.get());
-  brightray::ZoomLevelDelegate::RegisterPrefs(registry.get());
+  InspectableWebContentsImpl::RegisterPrefs(registry.get());
+  MediaDeviceIDSalt::RegisterPrefs(registry.get());
+  ZoomLevelDelegate::RegisterPrefs(registry.get());
   PrefProxyConfigTrackerImpl::RegisterPrefs(registry.get());
 
   prefs_ = prefs_factory.Create(
@@ -210,7 +210,7 @@ content::ResourceContext* AtomBrowserContext::GetResourceContext() {
 
 std::string AtomBrowserContext::GetMediaDeviceIDSalt() {
   if (!media_device_id_salt_.get())
-    media_device_id_salt_.reset(new brightray::MediaDeviceIDSalt(prefs_.get()));
+    media_device_id_salt_.reset(new MediaDeviceIDSalt(prefs_.get()));
   return media_device_id_salt_->GetSalt();
 }
 
@@ -218,8 +218,7 @@ std::unique_ptr<content::ZoomLevelDelegate>
 AtomBrowserContext::CreateZoomLevelDelegate(
     const base::FilePath& partition_path) {
   if (!IsOffTheRecord()) {
-    return std::make_unique<brightray::ZoomLevelDelegate>(prefs(),
-                                                          partition_path);
+    return std::make_unique<ZoomLevelDelegate>(prefs(), partition_path);
   }
   return std::unique_ptr<content::ZoomLevelDelegate>();
 }

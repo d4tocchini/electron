@@ -22,6 +22,8 @@
 #include "atom/browser/native_window.h"
 #include "atom/browser/net/atom_network_delegate.h"
 #include "atom/browser/ui/drag_util.h"
+#include "atom/browser/ui/inspectable_web_contents.h"
+#include "atom/browser/ui/inspectable_web_contents_view.h"
 #include "atom/browser/web_contents_permission_helper.h"
 #include "atom/browser/web_contents_preferences.h"
 #include "atom/browser/web_contents_zoom_controller.h"
@@ -48,8 +50,6 @@
 #include "base/threading/thread_restrictions.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/values.h"
-#include "brightray/browser/inspectable_web_contents.h"
-#include "brightray/browser/inspectable_web_contents_view.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/ssl/security_state_tab_helper.h"
 #include "content/browser/frame_host/frame_tree_node.h"
@@ -310,21 +310,24 @@ struct WebContents::FrameDispatchHelper {
 };
 
 WebContents::WebContents(v8::Isolate* isolate,
+                         content::WebContents* web_contents)
+    : content::WebContentsObserver(web_contents), type_(REMOTE) {
+  web_contents->SetUserAgentOverride(GetBrowserContext()->GetUserAgent(),
+                                     false);
+  Init(isolate);
+  AttachAsUserData(web_contents);
+  InitZoomController(web_contents, mate::Dictionary::CreateEmpty(isolate));
+}
+
+WebContents::WebContents(v8::Isolate* isolate,
                          content::WebContents* web_contents,
                          Type type)
     : content::WebContentsObserver(web_contents), type_(type) {
-  const mate::Dictionary options = mate::Dictionary::CreateEmpty(isolate);
-  if (type == REMOTE) {
-    web_contents->SetUserAgentOverride(GetBrowserContext()->GetUserAgent(),
-                                       false);
-    Init(isolate);
-    AttachAsUserData(web_contents);
-    InitZoomController(web_contents, options);
-  } else {
-    auto session = Session::CreateFrom(isolate, GetBrowserContext());
-    session_.Reset(isolate, session.ToV8());
-    InitWithSessionAndOptions(isolate, web_contents, session, options);
-  }
+  DCHECK(type != REMOTE) << "Can't take ownership of a remote WebContents";
+  auto session = Session::CreateFrom(isolate, GetBrowserContext());
+  session_.Reset(isolate, session.ToV8());
+  InitWithSessionAndOptions(isolate, web_contents, session,
+                            mate::Dictionary::CreateEmpty(isolate));
 }
 
 WebContents::WebContents(v8::Isolate* isolate,
@@ -538,8 +541,9 @@ void WebContents::WebContentsCreated(content::WebContents* source_contents,
                                      content::WebContents* new_contents) {
   v8::Locker locker(isolate());
   v8::HandleScope handle_scope(isolate());
-  auto api_web_contents = CreateFrom(isolate(), new_contents, BROWSER_WINDOW);
-  Emit("-web-contents-created", api_web_contents, target_url, frame_name);
+  // Create V8 wrapper for the |new_contents|.
+  auto wrapper = CreateAndTake(isolate(), new_contents, BROWSER_WINDOW);
+  Emit("-web-contents-created", wrapper, target_url, frame_name);
 }
 
 void WebContents::AddNewContents(
@@ -552,7 +556,11 @@ void WebContents::AddNewContents(
   new ChildWebContentsTracker(new_contents.get());
   v8::Locker locker(isolate());
   v8::HandleScope handle_scope(isolate());
-  auto api_web_contents = CreateFrom(isolate(), new_contents.release());
+  // Note that the ownership of |new_contents| has already been claimed by
+  // the WebContentsCreated method, the release call here completes
+  // the ownership transfer.
+  auto api_web_contents = From(isolate(), new_contents.release());
+  DCHECK(!api_web_contents.IsEmpty());
   if (Emit("-add-new-contents", api_web_contents, disposition, user_gesture,
            initial_rect.x(), initial_rect.y(), initial_rect.width(),
            initial_rect.height())) {
@@ -979,8 +987,8 @@ void WebContents::DevToolsFocused() {
 void WebContents::DevToolsOpened() {
   v8::Locker locker(isolate());
   v8::HandleScope handle_scope(isolate());
-  auto handle = WebContents::CreateFrom(
-      isolate(), managed_web_contents()->GetDevToolsWebContents());
+  auto handle =
+      FromOrCreate(isolate(), managed_web_contents()->GetDevToolsWebContents());
   devtools_web_contents_.Reset(isolate(), handle.ToV8());
 
   // Set inspected tabID.
@@ -1102,6 +1110,37 @@ void WebContents::NavigationEntryCommitted(
     const content::LoadCommittedDetails& details) {
   Emit("navigation-entry-commited", details.entry->GetURL(),
        details.is_same_document, details.did_replace_entry);
+}
+
+void WebContents::SetBackgroundThrottling(bool allowed) {
+  background_throttling_ = allowed;
+
+  const auto* contents = web_contents();
+  if (!contents) {
+    return;
+  }
+
+  const auto* render_view_host = contents->GetRenderViewHost();
+  if (!render_view_host) {
+    return;
+  }
+
+  const auto* render_process_host = render_view_host->GetProcess();
+  if (!render_process_host) {
+    return;
+  }
+
+  auto* render_widget_host_impl = content::RenderWidgetHostImpl::FromID(
+      render_process_host->GetID(), render_view_host->GetRoutingID());
+  if (!render_widget_host_impl) {
+    return;
+  }
+
+  render_widget_host_impl->disable_hidden_ = !background_throttling_;
+
+  if (render_widget_host_impl->is_hidden()) {
+    render_widget_host_impl->WasShown(false);
+  }
 }
 
 int WebContents::GetProcessID() const {
@@ -2011,6 +2050,8 @@ void WebContents::BuildPrototype(v8::Isolate* isolate,
   prototype->SetClassName(mate::StringToV8(isolate, "WebContents"));
   mate::ObjectTemplateBuilder(isolate, prototype->PrototypeTemplate())
       .MakeDestroyable()
+      .SetMethod("setBackgroundThrottling",
+                 &WebContents::SetBackgroundThrottling)
       .SetMethod("getProcessId", &WebContents::GetProcessID)
       .SetMethod("getOSProcessId", &WebContents::GetOSProcessID)
       .SetMethod("equal", &WebContents::Equal)
@@ -2147,32 +2188,40 @@ void WebContents::OnRendererMessageTo(content::RenderFrameHost* frame_host,
 }
 
 // static
-mate::Handle<WebContents> WebContents::CreateFrom(
-    v8::Isolate* isolate,
-    content::WebContents* web_contents) {
-  // We have an existing WebContents object in JS.
-  auto* existing = TrackableObject::FromWrappedClass(isolate, web_contents);
-  if (existing)
-    return mate::CreateHandle(isolate, static_cast<WebContents*>(existing));
-
-  // Otherwise create a new WebContents wrapper object.
-  return mate::CreateHandle(isolate,
-                            new WebContents(isolate, web_contents, REMOTE));
+mate::Handle<WebContents> WebContents::Create(v8::Isolate* isolate,
+                                              const mate::Dictionary& options) {
+  return mate::CreateHandle(isolate, new WebContents(isolate, options));
 }
 
-mate::Handle<WebContents> WebContents::CreateFrom(
+// static
+mate::Handle<WebContents> WebContents::CreateAndTake(
     v8::Isolate* isolate,
     content::WebContents* web_contents,
     Type type) {
-  // Otherwise create a new WebContents wrapper object.
   return mate::CreateHandle(isolate,
                             new WebContents(isolate, web_contents, type));
 }
 
 // static
-mate::Handle<WebContents> WebContents::Create(v8::Isolate* isolate,
-                                              const mate::Dictionary& options) {
-  return mate::CreateHandle(isolate, new WebContents(isolate, options));
+mate::Handle<WebContents> WebContents::From(
+    v8::Isolate* isolate,
+    content::WebContents* web_contents) {
+  auto* existing = TrackableObject::FromWrappedClass(isolate, web_contents);
+  if (existing)
+    return mate::CreateHandle(isolate, static_cast<WebContents*>(existing));
+  else
+    return mate::Handle<WebContents>();
+}
+
+// static
+mate::Handle<WebContents> WebContents::FromOrCreate(
+    v8::Isolate* isolate,
+    content::WebContents* web_contents) {
+  auto existing = From(isolate, web_contents);
+  if (!existing.IsEmpty())
+    return existing;
+  else
+    return mate::CreateHandle(isolate, new WebContents(isolate, web_contents));
 }
 
 }  // namespace api
