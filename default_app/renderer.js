@@ -30,6 +30,7 @@ function initialize () {
   document.querySelector('.chrome-version').innerText = `Chromium v${process.versions.chrome}`
   document.querySelector('.node-version').innerText = `Node v${process.versions.node}`
   document.querySelector('.v8-version').innerText = `v8 v${process.versions.v8}`
+  document.querySelector('.abi-version').innerText = `v8 v${process.versions.modules}`
   document.querySelector('.command-example').innerText = `${electronPath} path-to-app`
 
   function getOcticonSvg (name) {
