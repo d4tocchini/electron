@@ -1,4 +1,4 @@
-From 2067d5a31905f889d7537c4a4ab680577bb5e75f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Heilig Benedek <benecene@gmail.com>
 Date: Thu, 20 Sep 2018 17:47:54 -0700
 Subject: disable-redraw-lock.patch
@@ -15,10 +15,10 @@ the redraw locking mechanism, which fixes these issues. The electron issue
 can be found at https://github.com/electron/electron/issues/1821
 
 diff --git a/ui/views/win/hwnd_message_handler.cc b/ui/views/win/hwnd_message_handler.cc
-index d5f442f71da7..a8f39b060115 100644
+index 54eb0fcd0bf79bef4c7bfbd07bea27b005e73f61..90a11451be65a152f7bcc77eef360b1b41e41a28 100644
 --- a/ui/views/win/hwnd_message_handler.cc
 +++ b/ui/views/win/hwnd_message_handler.cc
-@@ -281,6 +281,10 @@ const int kSynthesizedMouseMessagesTimeDifference = 500;
+@@ -282,6 +282,10 @@ const int kSynthesizedMouseMessagesTimeDifference = 500;
  
  }  // namespace
  
@@ -29,7 +29,7 @@ index d5f442f71da7..a8f39b060115 100644
  // A scoping class that prevents a window from being able to redraw in response
  // to invalidations that may occur within it for the lifetime of the object.
  //
-@@ -332,6 +336,7 @@ class HWNDMessageHandler::ScopedRedrawLock {
+@@ -333,6 +337,7 @@ class HWNDMessageHandler::ScopedRedrawLock {
          cancel_unlock_(false),
          should_lock_(owner_->IsVisible() && !owner->HasChildRenderingWindow() &&
                       ::IsWindow(hwnd_) &&
@@ -37,7 +37,7 @@ index d5f442f71da7..a8f39b060115 100644
                       (!(GetWindowLong(hwnd_, GWL_STYLE) & WS_CAPTION) ||
                        !ui::win::IsAeroGlassEnabled())) {
      if (should_lock_)
-@@ -940,6 +945,10 @@ bool HWNDMessageHandler::HasChildRenderingWindow() {
+@@ -933,6 +938,10 @@ bool HWNDMessageHandler::HasChildRenderingWindow() {
        hwnd());
  }
  
@@ -49,10 +49,10 @@ index d5f442f71da7..a8f39b060115 100644
  // HWNDMessageHandler, gfx::WindowImpl overrides:
  
 diff --git a/ui/views/win/hwnd_message_handler.h b/ui/views/win/hwnd_message_handler.h
-index 91afedec8e29..fa514d102538 100644
+index 593c3c0e95b50c9847994af705c053586e78689f..43e4a26502d837972d8acc68a1e7e7550766ddf6 100644
 --- a/ui/views/win/hwnd_message_handler.h
 +++ b/ui/views/win/hwnd_message_handler.h
-@@ -181,6 +181,8 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
+@@ -182,6 +182,8 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
    typedef std::set<DWORD> TouchIDs;
    enum class DwmFrameState { OFF, ON };
  
@@ -62,7 +62,7 @@ index 91afedec8e29..fa514d102538 100644
    HICON GetDefaultWindowIcon() const override;
    HICON GetSmallWindowIcon() const override;
 diff --git a/ui/views/win/hwnd_message_handler_delegate.h b/ui/views/win/hwnd_message_handler_delegate.h
-index 1b2d98a85738..dd080180aebd 100644
+index b3f670dddf8936e29932345ef0516318b904d0ef..a63d727930a43c680ef3672921e63c35fc34191d 100644
 --- a/ui/views/win/hwnd_message_handler_delegate.h
 +++ b/ui/views/win/hwnd_message_handler_delegate.h
 @@ -46,6 +46,8 @@ class VIEWS_EXPORT HWNDMessageHandlerDelegate {
@@ -74,6 +74,3 @@ index 1b2d98a85738..dd080180aebd 100644
    // Returns who we want to be drawing the frame. Either the system (Windows)
    // will handle it or Chrome will custom draw it.
    virtual FrameMode GetFrameMode() const = 0;
--- 
-2.17.0
-

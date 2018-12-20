@@ -99,7 +99,9 @@ going to be created with `scheme`. `completion` will be called with
 
 To handle the `request`, the `callback` should be called with either the file's
 path or an object that has a `path` property, e.g. `callback(filePath)` or
-`callback({ path: filePath })`.
+`callback({ path: filePath })`. The object may also have a `headers` property
+which gives a list of strings for the response headers, e.g.
+`callback({ path: filePath, headers: ["Content-Security-Policy: default-src 'none'"]})`.
 
 When `callback` is called with nothing, a number, or an object that has an
 `error` property, the `request` will fail with the `error` number you
@@ -169,6 +171,7 @@ should be called with either a `String` or an object that has the `data`,
 * `handler` Function
   * `request` Object
     * `url` String
+    * `headers` Object
     * `referrer` String
     * `method` String
     * `uploadData` [UploadData[]](structures/upload-data.md)
@@ -267,7 +270,7 @@ Unregisters the custom protocol of `scheme`.
 
 * `scheme` String
 * `callback` Function
-  * `error` Error
+  * `handled` Boolean
 
 The `callback` will be called with a boolean that indicates whether there is
 already a handler for `scheme`.
@@ -329,6 +332,7 @@ which sends a `Buffer` as a response.
 * `handler` Function
   * `request` Object
     * `url` String
+    * `headers` Object
     * `referrer` String
     * `method` String
     * `uploadData` [UploadData[]](structures/upload-data.md)

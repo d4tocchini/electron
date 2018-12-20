@@ -10,6 +10,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <tuple>
 
 #include "ui/views/widget/widget_observer.h"
 
@@ -39,7 +40,8 @@ class NativeWindowViews : public NativeWindow,
 #if defined(OS_WIN)
                           public MessageHandlerDelegate,
 #endif
-                          public views::WidgetObserver {
+                          public views::WidgetObserver,
+                          public ui::EventHandler {
  public:
   NativeWindowViews(const mate::Dictionary& options, NativeWindow* parent);
   ~NativeWindowViews() override;
@@ -128,6 +130,7 @@ class NativeWindowViews : public NativeWindow,
   bool IsVisibleOnAllWorkspaces() override;
 
   gfx::AcceleratedWidget GetAcceleratedWidget() const override;
+  NativeWindowHandle GetNativeWindowHandle() const override;
 
   gfx::Rect ContentBoundsToWindowBounds(const gfx::Rect& bounds) const override;
   gfx::Rect WindowBoundsToContentBounds(const gfx::Rect& bounds) const override;
@@ -201,6 +204,11 @@ class NativeWindowViews : public NativeWindow,
   void HandleKeyboardEvent(
       content::WebContents*,
       const content::NativeWebKeyboardEvent& event) override;
+
+#if defined(OS_LINUX)
+  // ui::EventHandler:
+  void OnMouseEvent(ui::MouseEvent* event) override;
+#endif
 
   // Returns the restore state for the window.
   ui::WindowShowState GetRestoredState();

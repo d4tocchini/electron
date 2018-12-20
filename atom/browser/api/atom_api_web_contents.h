@@ -15,6 +15,7 @@
 #include "atom/browser/common_web_contents_delegate.h"
 #include "atom/browser/ui/autofill_popup.h"
 #include "base/observer_list.h"
+#include "base/observer_list_types.h"
 #include "content/common/cursors/webcursor.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
 #include "content/public/browser/web_contents.h"
@@ -22,8 +23,13 @@
 #include "content/public/common/favicon_url.h"
 #include "electron/buildflags/buildflags.h"
 #include "native_mate/handle.h"
-#include "printing/backend/print_backend.h"
+#include "printing/buildflags/buildflags.h"
 #include "ui/gfx/image/image.h"
+
+#if BUILDFLAG(ENABLE_PRINTING)
+#include "atom/browser/printing/print_preview_message_handler.h"
+#include "printing/backend/print_backend.h"
+#endif
 
 namespace blink {
 struct WebDeviceEmulationParams;
@@ -48,17 +54,20 @@ class WebViewGuestDelegate;
 class FrameSubscriber;
 
 #if BUILDFLAG(ENABLE_OSR)
-class OffScreenWebContentsView;
+class OffScreenRenderWidgetHostView;
 #endif
 
 namespace api {
 
 // Certain events are only in WebContentsDelegate, provide our own Observer to
 // dispatch those events.
-class ExtendedWebContentsObserver {
+class ExtendedWebContentsObserver : public base::CheckedObserver {
  public:
   virtual void OnCloseContents() {}
   virtual void OnRendererResponsive() {}
+
+ protected:
+  ~ExtendedWebContentsObserver() override {}
 };
 
 // Wrapper around the content::WebContents.
@@ -75,10 +84,6 @@ class WebContents : public mate::TrackableObject<WebContents>,
     OFF_SCREEN,       // Used for offscreen rendering
   };
 
-  // For node.js callback function type: function(error, buffer)
-  using PrintToPDFCallback =
-      base::Callback<void(v8::Local<v8::Value>, v8::Local<v8::Value>)>;
-
   // Create a new WebContents and return the V8 wrapper of it.
   static mate::Handle<WebContents> Create(v8::Isolate* isolate,
                                           const mate::Dictionary& options);
@@ -88,7 +93,7 @@ class WebContents : public mate::TrackableObject<WebContents>,
   // The lifetime of |web_contents| will be managed by this class.
   static mate::Handle<WebContents> CreateAndTake(
       v8::Isolate* isolate,
-      content::WebContents* web_contents,
+      std::unique_ptr<content::WebContents> web_contents,
       Type type);
 
   // Get the V8 wrapper of |web_content|, return empty handle if not wrapped.
@@ -106,7 +111,19 @@ class WebContents : public mate::TrackableObject<WebContents>,
   static void BuildPrototype(v8::Isolate* isolate,
                              v8::Local<v8::FunctionTemplate> prototype);
 
-  // Notifies to destroy any guest web contents before destroying self.
+  // Destroy the managed content::WebContents instance.
+  //
+  // Note: The |async| should only be |true| when users are expecting to use the
+  // webContents immediately after the call. Always pass |false| if you are not
+  // sure.
+  // See https://github.com/electron/electron/issues/8930.
+  //
+  // Note: When destroying a webContents member inside a destructor, the |async|
+  // should always be |false|, otherwise the destroy task might be delayed after
+  // normal shutdown procedure, resulting in an assertion.
+  // The normal pattern for calling this method in destructor is:
+  // api_web_contents_->DestroyWebContents(!Browser::Get()->is_shutting_down())
+  // See https://github.com/electron/electron/issues/15133.
   void DestroyWebContents(bool async);
 
   void SetBackgroundThrottling(bool allowed);
@@ -150,15 +167,18 @@ class WebContents : public mate::TrackableObject<WebContents>,
   void SetAudioMuted(bool muted);
   bool IsAudioMuted();
   bool IsCurrentlyAudible();
-  void Print(mate::Arguments* args);
-  std::vector<printing::PrinterBasicInfo> GetPrinterList();
   void SetEmbedder(const WebContents* embedder);
   void SetDevToolsWebContents(const WebContents* devtools);
   v8::Local<v8::Value> GetNativeView() const;
 
+#if BUILDFLAG(ENABLE_PRINTING)
+  void Print(mate::Arguments* args);
+  std::vector<printing::PrinterBasicInfo> GetPrinterList();
   // Print current page as PDF.
-  void PrintToPDF(const base::DictionaryValue& setting,
-                  const PrintToPDFCallback& callback);
+  void PrintToPDF(
+      const base::DictionaryValue& settings,
+      const PrintPreviewMessageHandler::PrintToPDFCallback& callback);
+#endif
 
   // DevTools workspace api.
   void AddWorkSpace(mate::Arguments* args, const base::FilePath& path);
@@ -198,6 +218,12 @@ class WebContents : public mate::TrackableObject<WebContents>,
                                 const base::ListValue& args,
                                 int32_t sender_id = 0);
 
+  bool SendIPCMessageToFrame(bool internal,
+                             bool send_to_all,
+                             int32_t frame_id,
+                             const std::string& channel,
+                             const base::ListValue& args);
+
   // Send WebInputEvent to the page.
   void SendInputEvent(v8::Isolate* isolate, v8::Local<v8::Value> input_event);
 
@@ -210,7 +236,7 @@ class WebContents : public mate::TrackableObject<WebContents>,
 
   // Captures the page with |rect|, |callback| would be called when capturing is
   // done.
-  void CapturePage(mate::Arguments* args);
+  v8::Local<v8::Promise> CapturePage(mate::Arguments* args);
 
   // Methods for creating <webview>.
   bool IsGuest() const;
@@ -282,7 +308,9 @@ class WebContents : public mate::TrackableObject<WebContents>,
     observers_.AddObserver(obs);
   }
   void RemoveObserver(ExtendedWebContentsObserver* obs) {
-    observers_.RemoveObserver(obs);
+    // Trying to remove from an empty collection leads to an access violation
+    if (observers_.might_have_observers())
+      observers_.RemoveObserver(obs);
   }
 
   bool EmitNavigationEvent(const std::string& event,
@@ -293,16 +321,17 @@ class WebContents : public mate::TrackableObject<WebContents>,
   WebContents(v8::Isolate* isolate, content::WebContents* web_contents);
   // Takes over ownership of |web_contents|.
   WebContents(v8::Isolate* isolate,
-              content::WebContents* web_contents,
+              std::unique_ptr<content::WebContents> web_contents,
               Type type);
   // Creates a new content::WebContents.
   WebContents(v8::Isolate* isolate, const mate::Dictionary& options);
   ~WebContents() override;
 
-  void InitWithSessionAndOptions(v8::Isolate* isolate,
-                                 content::WebContents* web_contents,
-                                 mate::Handle<class Session> session,
-                                 const mate::Dictionary& options);
+  void InitWithSessionAndOptions(
+      v8::Isolate* isolate,
+      std::unique_ptr<content::WebContents> web_contents,
+      mate::Handle<class Session> session,
+      const mate::Dictionary& options);
 
   // content::WebContentsDelegate:
   bool DidAddMessageToConsole(content::WebContents* source,
@@ -379,6 +408,8 @@ class WebContents : public mate::TrackableObject<WebContents>,
   // content::WebContentsObserver:
   void BeforeUnloadFired(const base::TimeTicks& proceed_time) override;
   void RenderViewCreated(content::RenderViewHost*) override;
+  void RenderViewHostChanged(content::RenderViewHost* old_host,
+                             content::RenderViewHost* new_host) override;
   void RenderViewDeleted(content::RenderViewHost*) override;
   void RenderProcessGone(base::TerminationStatus status) override;
   void DocumentLoadedInFrame(
@@ -438,9 +469,8 @@ class WebContents : public mate::TrackableObject<WebContents>,
   uint32_t GetNextRequestId() { return ++request_id_; }
 
 #if BUILDFLAG(ENABLE_OSR)
-  OffScreenWebContentsView* GetOffScreenWebContentsView() const;
-  OffScreenRenderWidgetHostView* GetOffScreenRenderWidgetHostView()
-      const override;
+  OffScreenWebContentsView* GetOffScreenWebContentsView() const override;
+  OffScreenRenderWidgetHostView* GetOffScreenRenderWidgetHostView() const;
 #endif
 
   // Called when we receive a CursorChange message from chromium.
@@ -485,7 +515,6 @@ class WebContents : public mate::TrackableObject<WebContents>,
 
   std::unique_ptr<AtomJavaScriptDialogManager> dialog_manager_;
   std::unique_ptr<WebViewGuestDelegate> guest_delegate_;
-
   std::unique_ptr<FrameSubscriber> frame_subscriber_;
 
   // The host webcontents that may contain this webcontents.
@@ -508,6 +537,10 @@ class WebContents : public mate::TrackableObject<WebContents>,
 
   // Observers of this WebContents.
   base::ObserverList<ExtendedWebContentsObserver> observers_;
+
+  // The ID of the process of the currently committed RenderViewHost.
+  // -1 means no speculative RVH has been committed yet.
+  int currently_committed_process_id_ = -1;
 
   DISALLOW_COPY_AND_ASSIGN(WebContents);
 };

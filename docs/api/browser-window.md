@@ -122,7 +122,6 @@ state is `hidden` in order to minimize power consumption.
 * On macOS the child windows will keep the relative position to parent window
   when parent window moves, while on Windows and Linux child windows will not
   move.
-* On Windows it is not supported to change parent window dynamically.
 * On Linux the type of modal windows will be changed to `dialog`.
 * On Linux many desktop environments do not support hiding a modal window.
 
@@ -180,7 +179,7 @@ It creates a new `BrowserWindow` with native properties as set by the `options`.
   * `skipTaskbar` Boolean (optional) - Whether to show the window in taskbar. Default is
     `false`.
   * `kiosk` Boolean (optional) - The kiosk mode. Default is `false`.
-  * `title` String (optional) - Default window title. Default is `"Electron"`.
+  * `title` String (optional) - Default window title. Default is `"Electron"`. If the HTML tag `<title>` is defined in the HTML file loaded by `loadURL()`, this property will be ignored.
   * `icon` ([NativeImage](native-image.md) | String) (optional) - The window icon. On Windows it is
     recommended to use `ICO` icons to get best visual effects, you can also
     leave it undefined so the executable's icon will be used.
@@ -222,11 +221,11 @@ It creates a new `BrowserWindow` with native properties as set by the `options`.
       the top left.
     * `hiddenInset` - Results in a hidden title bar with an alternative look
       where the traffic light buttons are slightly more inset from the window edge.
-    * `customButtonsOnHover` Boolean (optional) - Draw custom close, minimize,
-      and full screen buttons on macOS frameless windows. These buttons will not
-      display unless hovered over in the top left of the window. These custom
-      buttons prevent issues with mouse events that occur with the standard
-      window toolbar buttons. **Note:** This option is currently experimental.
+    * `customButtonsOnHover` Boolean (optional) - Draw custom close,
+      and minimize buttons on macOS frameless windows. These buttons will not display
+      unless hovered over in the top left of the window. These custom buttons prevent
+      issues with mouse events that occur with the standard window toolbar buttons.
+      **Note:** This option is currently experimental.
   * `fullscreenWindowTitle` Boolean (optional) - Shows the title in the
     title bar in full screen mode on macOS for all `titleBarStyle` options.
     Default is `false`.
@@ -348,10 +347,10 @@ It creates a new `BrowserWindow` with native properties as set by the `options`.
       This option uses the same technique used by [Chrome Content Scripts][chrome-content-scripts].
       You can access this context in the dev tools by selecting the
       'Electron Isolated Context' entry in the combo box at the top of the
-      Console tab. **Note:** This option is currently experimental and may
-      change or be removed in future Electron releases.
+      Console tab.
     * `nativeWindowOpen` Boolean (optional) - Whether to use native
-      `window.open()`. Defaults to `false`. **Note:** This option is currently
+      `window.open()`. Defaults to `false`. Child windows will always have node
+      integration disabled. **Note:** This option is currently
       experimental.
     * `webviewTag` Boolean (optional) - Whether to enable the [`<webview>` tag](webview-tag.md).
       Defaults to the value of the `nodeIntegration` option. **Note:** The
@@ -553,7 +552,7 @@ Returns:
 
 Emitted when the window is set or unset to show always on top of other windows.
 
-#### Event: 'app-command' _Windows_
+#### Event: 'app-command' _Windows_ _Linux_
 
 Returns:
 
@@ -578,6 +577,11 @@ win.on('app-command', (e, cmd) => {
   }
 })
 ```
+
+The following app commands are explictly supported on Linux:
+
+* `browser-backward`
+* `browser-forward`
 
 #### Event: 'scroll-touch-begin' _macOS_
 
@@ -895,7 +899,21 @@ Closes the currently open [Quick Look][quick-look] panel.
 * `bounds` [Rectangle](structures/rectangle.md)
 * `animate` Boolean (optional) _macOS_
 
-Resizes and moves the window to the supplied bounds
+Resizes and moves the window to the supplied bounds. Any properties that are not supplied will default to their current values.
+
+```javascript
+const { BrowserWindow } = require('electron')
+const win = new BrowserWindow()
+
+// set all bounds properties
+win.setBounds({ x: 440, y: 225, width: 800, height: 600 })
+
+// set a single bounds property
+win.setBounds({ width: 100 })
+
+// { x: 440, y: 225, width: 100, height: 600 }
+console.log(win.getBounds())
+```
 
 #### `win.getBounds()`
 
@@ -1092,7 +1110,7 @@ Changes the title of native window to `title`.
 
 Returns `String` - The title of the native window.
 
-**Note:** The title of web page can be different from the title of the native
+**Note:** The title of the web page can be different from the title of the native
 window.
 
 #### `win.setSheetOffset(offsetY[, offsetX])` _macOS_
@@ -1197,7 +1215,19 @@ Returns `Boolean` - Whether the window's document has been edited.
 * `callback` Function
   * `image` [NativeImage](native-image.md)
 
-Same as `webContents.capturePage([rect, ]callback)`.
+Captures a snapshot of the page within `rect`. Upon completion `callback` will
+be called with `callback(image)`. The `image` is an instance of [NativeImage](native-image.md)
+that stores data of the snapshot. Omitting `rect` will capture the whole visible page.
+
+**[Deprecated Soon](promisification.md)**
+
+#### `win.capturePage([rect])`
+
+* `rect` [Rectangle](structures/rectangle.md) (optional) - The bounds to capture
+
+* Returns `Promise<NativeImage>` - Resolves with a [NativeImage](native-image.md)
+
+Captures a snapshot of the page within `rect`. Omitting `rect` will capture the whole visible page.
 
 #### `win.loadURL(url[, options])`
 
@@ -1209,7 +1239,11 @@ Same as `webContents.capturePage([rect, ]callback)`.
   * `postData` ([UploadRawData[]](structures/upload-raw-data.md) | [UploadFile[]](structures/upload-file.md) | [UploadBlob[]](structures/upload-blob.md)) (optional)
   * `baseURLForDataURL` String (optional) - Base url (with trailing path separator) for files to be loaded by the data url. This is needed only if the specified `url` is a data url and needs to load other files.
 
-Same as `webContents.loadURL(url[, options])`.
+Returns `Promise<void>` - the promise will resolve when the page has finished loading
+(see [`did-finish-load`](web-contents.md#event-did-finish-load)), and rejects
+if the page fails to load (see [`did-fail-load`](web-contents.md#event-did-fail-load)).
+
+Same as [`webContents.loadURL(url[, options])`](web-contents.md#contentsloadurlurl-options).
 
 The `url` can be a remote address (e.g. `http://`) or a path to a local
 HTML file using the `file://` protocol.
@@ -1248,6 +1282,10 @@ win.loadURL('http://localhost:8000/post', {
   * `query` Object (optional) - Passed to `url.format()`.
   * `search` String (optional) - Passed to `url.format()`.
   * `hash` String (optional) - Passed to `url.format()`.
+
+Returns `Promise<void>` - the promise will resolve when the page has finished loading
+(see [`did-finish-load`](web-contents.md#event-did-finish-load)), and rejects
+if the page fails to load (see [`did-fail-load`](web-contents.md#event-did-fail-load)).
 
 Same as `webContents.loadFile`, `filePath` should be a path to an HTML
 file relative to the root of your application.  See the `webContents` docs
@@ -1489,7 +1527,7 @@ On Windows it calls SetWindowDisplayAffinity with `WDA_MONITOR`.
 
 Changes whether the window can be focused.
 
-#### `win.setParentWindow(parent)` _Linux_ _macOS_
+#### `win.setParentWindow(parent)`
 
 * `parent` BrowserWindow
 

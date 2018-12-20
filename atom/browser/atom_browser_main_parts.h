@@ -11,23 +11,25 @@
 
 #include "base/callback.h"
 #include "base/timer/timer.h"
-#include "brightray/browser/browser_main_parts.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_main_parts.h"
 #include "content/public/common/main_function_params.h"
 #include "services/device/public/mojom/geolocation_control.mojom.h"
+#include "ui/views/layout/layout_provider.h"
 
 class BrowserProcess;
 class IconManager;
 
-namespace net_log {
-class ChromeNetLog;
+#if defined(USE_AURA)
+namespace wm {
+class WMState;
 }
+#endif
 
 namespace atom {
 
 class AtomBindings;
 class Browser;
-class IOThread;
 class JavascriptEnvironment;
 class NodeBindings;
 class NodeDebugger;
@@ -42,7 +44,7 @@ class ViewsDelegate;
 class ViewsDelegateMac;
 #endif
 
-class AtomBrowserMainParts : public brightray::BrowserMainParts {
+class AtomBrowserMainParts : public content::BrowserMainParts {
  public:
   explicit AtomBrowserMainParts(const content::MainFunctionParams& params);
   ~AtomBrowserMainParts() override;
@@ -68,11 +70,10 @@ class AtomBrowserMainParts : public brightray::BrowserMainParts {
   IconManager* GetIconManager();
 
   Browser* browser() { return browser_.get(); }
-  IOThread* io_thread() const { return io_thread_.get(); }
-  net_log::ChromeNetLog* net_log() { return net_log_.get(); }
 
  protected:
   // content::BrowserMainParts:
+  bool ShouldContentCreateFeatureList() override;
   int PreEarlyInitialization() override;
   void PostEarlyInitialization() override;
   int PreCreateThreads() override;
@@ -82,12 +83,14 @@ class AtomBrowserMainParts : public brightray::BrowserMainParts {
   void PreDefaultMainMessageLoopRun(base::OnceClosure quit_closure) override;
   void PostMainMessageLoopStart() override;
   void PostMainMessageLoopRun() override;
-#if defined(OS_MACOSX)
   void PreMainMessageLoopStart() override;
-#endif
   void PostDestroyThreads() override;
 
  private:
+  void InitializeFeatureList();
+  void OverrideAppLogsPath();
+  void PreMainMessageLoopStartCommon();
+
 #if defined(OS_POSIX)
   // Set signal handlers.
   void HandleSIGCHLD();
@@ -96,6 +99,7 @@ class AtomBrowserMainParts : public brightray::BrowserMainParts {
 
 #if defined(OS_MACOSX)
   void FreeAppDelegate();
+  void InitializeMainNib();
 #endif
 
 #if defined(OS_MACOSX)
@@ -103,6 +107,13 @@ class AtomBrowserMainParts : public brightray::BrowserMainParts {
 #else
   std::unique_ptr<ViewsDelegate> views_delegate_;
 #endif
+
+#if defined(USE_AURA)
+  std::unique_ptr<wm::WMState> wm_state_;
+#endif
+
+  std::unique_ptr<views::LayoutProvider> layout_provider_;
+  std::string custom_locale_;
 
   // A fake BrowserProcess object that used to feed the source code from chrome.
   std::unique_ptr<BrowserProcessImpl> fake_browser_process_;
@@ -116,8 +127,6 @@ class AtomBrowserMainParts : public brightray::BrowserMainParts {
   std::unique_ptr<AtomBindings> atom_bindings_;
   std::unique_ptr<NodeEnvironment> node_env_;
   std::unique_ptr<NodeDebugger> node_debugger_;
-  std::unique_ptr<IOThread> io_thread_;
-  std::unique_ptr<net_log::ChromeNetLog> net_log_;
   std::unique_ptr<IconManager> icon_manager_;
 
   base::RepeatingTimer gc_timer_;

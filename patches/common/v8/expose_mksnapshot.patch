@@ -1,8 +1,15 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Shelley Vohr <shelley.vohr@gmail.com>
+Date: Mon, 22 Oct 2018 10:47:13 -0700
+Subject: expose_mksnapshot.patch
+
+Needed in order to build mksnapshot on arm.
+
 diff --git a/BUILD.gn b/BUILD.gn
-index 30e9ec34cf..fea543df9c 100644
+index ac74cdec115b6cc54d05817f063153628cf5e9fe..c1b08958b500da1910a8067198cdec7650534f20 100644
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -2904,8 +2904,6 @@ if (v8_monolithic) {
+@@ -3237,8 +3237,6 @@ if (v8_monolithic) {
  
  if (v8_use_snapshot && current_toolchain == v8_snapshot_toolchain) {
    v8_executable("mksnapshot") {

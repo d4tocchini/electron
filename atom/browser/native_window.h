@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "atom/browser/native_window_observer.h"
@@ -43,6 +44,12 @@ class AtomMenuModel;
 class NativeBrowserView;
 
 struct DraggableRegion;
+
+#if defined(OS_MACOSX)
+typedef NSView* NativeWindowHandle;
+#else
+typedef gfx::AcceleratedWidget NativeWindowHandle;
+#endif
 
 class NativeWindow : public base::SupportsUserData,
                      public views::WidgetDelegate {
@@ -152,6 +159,7 @@ class NativeWindow : public base::SupportsUserData,
   virtual gfx::NativeView GetNativeView() const = 0;
   virtual gfx::NativeWindow GetNativeWindow() const = 0;
   virtual gfx::AcceleratedWidget GetAcceleratedWidget() const = 0;
+  virtual NativeWindowHandle GetNativeWindowHandle() const = 0;
 
   // Taskbar/Dock APIs.
   enum ProgressState {
@@ -255,7 +263,7 @@ class NativeWindow : public base::SupportsUserData,
   void NotifyWindowEnterHtmlFullScreen();
   void NotifyWindowLeaveHtmlFullScreen();
   void NotifyWindowAlwaysOnTopChanged();
-  void NotifyWindowExecuteWindowsCommand(const std::string& command);
+  void NotifyWindowExecuteAppCommand(const std::string& command);
   void NotifyTouchBarItemInteraction(const std::string& item_id,
                                      const base::DictionaryValue& details);
   void NotifyNewWindowForTab();

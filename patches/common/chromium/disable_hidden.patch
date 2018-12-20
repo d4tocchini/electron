@@ -1,14 +1,14 @@
-From 624474e13fd8533e9e1f69e3d9b2d551c8fb807a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Cheng Zhao <zcbenz@gmail.com>
 Date: Thu, 20 Sep 2018 17:45:47 -0700
 Subject: disable_hidden.patch
 
 
 diff --git a/content/browser/renderer_host/render_widget_host_impl.cc b/content/browser/renderer_host/render_widget_host_impl.cc
-index 9ab96c3f933b..28879dc5e9bb 100644
+index 437b43ade73d0a154be0bf4aa14c29a9081b04d0..70e985b7b13031c760d2e791930b1361586a1707 100644
 --- a/content/browser/renderer_host/render_widget_host_impl.cc
 +++ b/content/browser/renderer_host/render_widget_host_impl.cc
-@@ -712,6 +712,9 @@ void RenderWidgetHostImpl::WasHidden() {
+@@ -718,6 +718,9 @@ void RenderWidgetHostImpl::WasHidden() {
    if (is_hidden_)
      return;
  
@@ -19,7 +19,7 @@ index 9ab96c3f933b..28879dc5e9bb 100644
  
    TRACE_EVENT0("renderer_host", "RenderWidgetHostImpl::WasHidden");
 diff --git a/content/browser/renderer_host/render_widget_host_impl.h b/content/browser/renderer_host/render_widget_host_impl.h
-index 4af5870e7c40..f2e19fe92e56 100644
+index c2d8cd562433ebdbb3372cae530c8967edb37225..c1e59acbfb0392833ddbcc4da60664c3eb51c7d6 100644
 --- a/content/browser/renderer_host/render_widget_host_impl.h
 +++ b/content/browser/renderer_host/render_widget_host_impl.h
 @@ -154,6 +154,9 @@ class CONTENT_EXPORT RenderWidgetHostImpl
@@ -32,6 +32,3 @@ index 4af5870e7c40..f2e19fe92e56 100644
    void set_hung_renderer_delay(const base::TimeDelta& delay) {
      hung_renderer_delay_ = delay;
    }
--- 
-2.17.0
-

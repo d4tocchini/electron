@@ -11,7 +11,8 @@
 #include <string>
 #include <vector>
 
-#include "brightray/browser/browser_client.h"
+#include "base/synchronization/lock.h"
+#include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/render_process_host_observer.h"
 #include "net/ssl/client_cert_identity.h"
 
@@ -30,9 +31,12 @@ class AtomResourceDispatcherHostDelegate;
 class NotificationPresenter;
 class PlatformNotificationService;
 
-class AtomBrowserClient : public brightray::BrowserClient,
+class AtomBrowserClient : public content::ContentBrowserClient,
                           public content::RenderProcessHostObserver {
  public:
+  static AtomBrowserClient* Get();
+  static void SetApplicationLocale(const std::string& locale);
+
   AtomBrowserClient();
   ~AtomBrowserClient() override;
 
@@ -58,8 +62,13 @@ class AtomBrowserClient : public brightray::BrowserClient,
   std::vector<std::unique_ptr<content::NavigationThrottle>>
   CreateThrottlesForNavigation(content::NavigationHandle* handle) override;
 
- protected:
   // content::ContentBrowserClient:
+  std::string GetApplicationLocale() override;
+
+  // content::ContentBrowserClient:
+  bool ShouldEnableStrictSiteIsolation() override;
+
+ protected:
   void RenderProcessWillLaunch(
       content::RenderProcessHost* host,
       service_manager::mojom::ServiceRequest* service_request) override;
@@ -67,13 +76,16 @@ class AtomBrowserClient : public brightray::BrowserClient,
   CreateSpeechRecognitionManagerDelegate() override;
   void OverrideWebkitPrefs(content::RenderViewHost* render_view_host,
                            content::WebPreferences* prefs) override;
-  void OverrideSiteInstanceForNavigation(
-      content::RenderFrameHost* render_frame_host,
+  SiteInstanceForNavigationType ShouldOverrideSiteInstanceForNavigation(
+      content::RenderFrameHost* current_rfh,
+      content::RenderFrameHost* speculative_rfh,
       content::BrowserContext* browser_context,
-      const GURL& dest_url,
+      const GURL& url,
       bool has_request_started,
-      content::SiteInstance* candidate_instance,
-      content::SiteInstance** new_instance) override;
+      content::SiteInstance** affinity_site_instance) const override;
+  void RegisterPendingSiteInstance(
+      content::RenderFrameHost* render_frame_host,
+      content::SiteInstance* pending_site_instance) override;
   void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
                                       int child_process_id) override;
   void DidCreatePpapiPlugin(content::BrowserPpapiHost* browser_host) override;
@@ -131,10 +143,14 @@ class AtomBrowserClient : public brightray::BrowserClient,
   content::DevToolsManagerDelegate* GetDevToolsManagerDelegate() override;
   content::PlatformNotificationService* GetPlatformNotificationService()
       override;
-
-  // brightray::BrowserClient:
-  brightray::BrowserMainParts* OverrideCreateBrowserMainParts(
+  content::BrowserMainParts* CreateBrowserMainParts(
       const content::MainFunctionParams&) override;
+  base::FilePath GetDefaultDownloadDirectory() override;
+  scoped_refptr<network::SharedURLLoaderFactory>
+  GetSystemSharedURLLoaderFactory() override;
+  void OnNetworkServiceCreated(
+      network::mojom::NetworkService* network_service) override;
+  bool ShouldBypassCORB(int render_process_id) const override;
 
   // content::RenderProcessHostObserver:
   void RenderProcessHostDestroyed(content::RenderProcessHost* host) override;
@@ -156,27 +172,41 @@ class AtomBrowserClient : public brightray::BrowserClient,
     bool sandbox = false;
     bool native_window_open = false;
     bool disable_popups = false;
+    bool web_security = true;
   };
 
-  bool ShouldCreateNewSiteInstance(content::RenderFrameHost* render_frame_host,
-                                   content::BrowserContext* browser_context,
-                                   content::SiteInstance* current_instance,
-                                   const GURL& dest_url);
+  bool ShouldForceNewSiteInstance(content::RenderFrameHost* current_rfh,
+                                  content::RenderFrameHost* speculative_rfh,
+                                  content::BrowserContext* browser_context,
+                                  const GURL& dest_url,
+                                  bool has_request_started) const;
+  bool NavigationWasRedirectedCrossSite(
+      content::BrowserContext* browser_context,
+      content::SiteInstance* current_instance,
+      content::SiteInstance* speculative_instance,
+      const GURL& dest_url,
+      bool has_request_started) const;
   void AddProcessPreferences(int process_id, ProcessPreferences prefs);
   void RemoveProcessPreferences(int process_id);
-  bool IsProcessObserved(int process_id);
-  bool IsRendererSandboxed(int process_id);
-  bool RendererUsesNativeWindowOpen(int process_id);
-  bool RendererDisablesPopups(int process_id);
+  bool IsProcessObserved(int process_id) const;
+  bool IsRendererSandboxed(int process_id) const;
+  bool RendererUsesNativeWindowOpen(int process_id) const;
+  bool RendererDisablesPopups(int process_id) const;
+  std::string GetAffinityPreference(content::RenderFrameHost* rfh) const;
+  content::SiteInstance* GetSiteInstanceFromAffinity(
+      content::BrowserContext* browser_context,
+      const GURL& url,
+      content::RenderFrameHost* rfh) const;
+  void ConsiderSiteInstanceForAffinity(content::RenderFrameHost* rfh,
+                                       content::SiteInstance* site_instance);
 
   // pending_render_process => web contents.
   std::map<int, content::WebContents*> pending_processes_;
 
-  std::map<int, ProcessPreferences> process_preferences_;
   std::map<int, base::ProcessId> render_process_host_pids_;
 
   // list of site per affinity. weak_ptr to prevent instance locking
-  std::map<std::string, content::SiteInstance*> site_per_affinities;
+  std::map<std::string, content::SiteInstance*> site_per_affinities_;
 
   std::unique_ptr<AtomResourceDispatcherHostDelegate>
       resource_dispatcher_host_delegate_;
@@ -185,6 +215,9 @@ class AtomBrowserClient : public brightray::BrowserClient,
   std::unique_ptr<NotificationPresenter> notification_presenter_;
 
   Delegate* delegate_ = nullptr;
+
+  mutable base::Lock process_preferences_lock_;
+  std::map<int, ProcessPreferences> process_preferences_;
 
   DISALLOW_COPY_AND_ASSIGN(AtomBrowserClient);
 };

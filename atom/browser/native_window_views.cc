@@ -10,6 +10,7 @@
 #endif
 
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -21,6 +22,7 @@
 #include "atom/browser/web_contents_preferences.h"
 #include "atom/browser/web_view_manager.h"
 #include "atom/browser/window_list.h"
+#include "atom/common/atom_constants.h"
 #include "atom/common/draggable_region.h"
 #include "atom/common/native_mate_converters/image_converter.h"
 #include "atom/common/options_switches.h"
@@ -286,6 +288,13 @@ NativeWindowViews::NativeWindowViews(const mate::Dictionary& options,
     last_window_state_ = ui::SHOW_STATE_NORMAL;
   last_normal_bounds_ = GetBounds();
 #endif
+
+#if defined(OS_LINUX)
+  // Listen to move events.
+  aura::Window* window = GetNativeWindow();
+  if (window)
+    window->AddPreTargetHandler(this);
+#endif
 }
 
 NativeWindowViews::~NativeWindowViews() {
@@ -294,6 +303,12 @@ NativeWindowViews::~NativeWindowViews() {
 #if defined(OS_WIN)
   // Disable mouse forwarding to relinquish resources, should any be held.
   SetForwardMouseMessages(false);
+#endif
+
+#if defined(OS_LINUX)
+  aura::Window* window = GetNativeWindow();
+  if (window)
+    window->RemovePreTargetHandler(this);
 #endif
 }
 
@@ -346,7 +361,7 @@ void NativeWindowViews::Show() {
       !widget()->native_widget_private()->IsVisible())
     static_cast<NativeWindowViews*>(parent())->IncrementChildModals();
 
-  widget()->native_widget_private()->ShowWithWindowState(GetRestoredState());
+  widget()->native_widget_private()->Show(GetRestoredState(), gfx::Rect());
 
   NotifyWindowShow();
 
@@ -453,8 +468,8 @@ void NativeWindowViews::Maximize() {
   if (IsVisible())
     widget()->Maximize();
   else
-    widget()->native_widget_private()->ShowWithWindowState(
-        ui::SHOW_STATE_MAXIMIZED);
+    widget()->native_widget_private()->Show(ui::SHOW_STATE_MAXIMIZED,
+                                            gfx::Rect());
 }
 
 void NativeWindowViews::Unmaximize() {
@@ -476,8 +491,8 @@ void NativeWindowViews::Minimize() {
   if (IsVisible())
     widget()->Minimize();
   else
-    widget()->native_widget_private()->ShowWithWindowState(
-        ui::SHOW_STATE_MINIMIZED);
+    widget()->native_widget_private()->Show(ui::SHOW_STATE_MINIMIZED,
+                                            gfx::Rect());
 }
 
 void NativeWindowViews::Restore() {
@@ -532,8 +547,8 @@ void NativeWindowViews::SetFullScreen(bool fullscreen) {
   if (IsVisible())
     widget()->SetFullscreen(fullscreen);
   else if (fullscreen)
-    widget()->native_widget_private()->ShowWithWindowState(
-        ui::SHOW_STATE_FULLSCREEN);
+    widget()->native_widget_private()->Show(ui::SHOW_STATE_FULLSCREEN,
+                                            gfx::Rect());
 
   // Auto-hide menubar when in fullscreen.
   if (fullscreen)
@@ -899,14 +914,18 @@ void NativeWindowViews::SetFocusable(bool focusable) {
 
 void NativeWindowViews::SetMenu(AtomMenuModel* menu_model) {
 #if defined(USE_X11)
-  if (menu_model == nullptr)
+  if (menu_model == nullptr) {
     global_menu_bar_.reset();
+    root_view_->UnregisterAcceleratorsWithFocusManager();
+    return;
+  }
 
   if (!global_menu_bar_ && ShouldUseGlobalMenuBar())
     global_menu_bar_.reset(new GlobalMenuBarX11(this));
 
   // Use global application menu bar when possible.
   if (global_menu_bar_ && global_menu_bar_->IsServerStarted()) {
+    root_view_->RegisterAcceleratorsWithFocusManager(menu_model);
     global_menu_bar_->SetMenu(menu_model);
     return;
   }
@@ -970,20 +989,27 @@ void NativeWindowViews::SetParentWindow(NativeWindow* parent) {
   XSetTransientForHint(
       xdisplay, GetAcceleratedWidget(),
       parent ? parent->GetAcceleratedWidget() : DefaultRootWindow(xdisplay));
-#elif defined(OS_WIN) && defined(DEBUG)
-  // Should work, but does not, it seems that the views toolkit doesn't support
-  // reparenting on desktop.
-  if (parent) {
-    ::SetParent(GetAcceleratedWidget(), parent->GetAcceleratedWidget());
-    views::Widget::ReparentNativeView(GetNativeWindow(),
-                                      parent->GetNativeWindow());
-    wm::AddTransientChild(parent->GetNativeWindow(), GetNativeWindow());
-  } else {
-    if (!GetNativeWindow()->parent())
-      return;
-    ::SetParent(GetAcceleratedWidget(), NULL);
-    views::Widget::ReparentNativeView(GetNativeWindow(), nullptr);
-    wm::RemoveTransientChild(GetNativeWindow()->parent(), GetNativeWindow());
+#elif defined(OS_WIN)
+  // To set parentship between windows into Windows is better to play with the
+  //  owner instead of the parent, as Windows natively seems to do if a parent
+  //  is specified at window creation time.
+  // For do this we must NOT use the ::SetParent function, instead we must use
+  //  the ::GetWindowLongPtr or ::SetWindowLongPtr functions with "nIndex" set
+  //  to "GWLP_HWNDPARENT" which actually means the window owner.
+  HWND hwndParent = parent ? parent->GetAcceleratedWidget() : NULL;
+  if (hwndParent ==
+      (HWND)::GetWindowLongPtr(GetAcceleratedWidget(), GWLP_HWNDPARENT))
+    return;
+  ::SetWindowLongPtr(GetAcceleratedWidget(), GWLP_HWNDPARENT,
+                     (LONG_PTR)hwndParent);
+  // Ensures the visibility
+  if (IsVisible()) {
+    WINDOWPLACEMENT wp;
+    wp.length = sizeof(WINDOWPLACEMENT);
+    ::GetWindowPlacement(GetAcceleratedWidget(), &wp);
+    ::ShowWindow(GetAcceleratedWidget(), SW_HIDE);
+    ::ShowWindow(GetAcceleratedWidget(), wp.showCmd);
+    ::BringWindowToTop(GetAcceleratedWidget());
   }
 #endif
 }
@@ -1050,6 +1076,10 @@ bool NativeWindowViews::IsVisibleOnAllWorkspaces() {
 
 gfx::AcceleratedWidget NativeWindowViews::GetAcceleratedWidget() const {
   return GetNativeWindow()->GetHost()->GetAcceleratedWidget();
+}
+
+NativeWindowHandle NativeWindowViews::GetNativeWindowHandle() const {
+  return GetAcceleratedWidget();
 }
 
 gfx::Rect NativeWindowViews::ContentBoundsToWindowBounds(
@@ -1264,10 +1294,29 @@ void NativeWindowViews::OnWidgetMove() {
 void NativeWindowViews::HandleKeyboardEvent(
     content::WebContents*,
     const content::NativeWebKeyboardEvent& event) {
+#if defined(OS_LINUX)
+  if (event.windows_key_code == ui::VKEY_BROWSER_BACK)
+    NotifyWindowExecuteAppCommand(kBrowserBackward);
+  else if (event.windows_key_code == ui::VKEY_BROWSER_FORWARD)
+    NotifyWindowExecuteAppCommand(kBrowserForward);
+#endif
+
   keyboard_event_handler_->HandleKeyboardEvent(event,
                                                root_view_->GetFocusManager());
   root_view_->HandleKeyEvent(event);
 }
+
+#if defined(OS_LINUX)
+void NativeWindowViews::OnMouseEvent(ui::MouseEvent* event) {
+  if (event->type() != ui::ET_MOUSE_PRESSED)
+    return;
+
+  if (event->changed_button_flags() == ui::EF_BACK_MOUSE_BUTTON)
+    NotifyWindowExecuteAppCommand(kBrowserBackward);
+  else if (event->changed_button_flags() == ui::EF_FORWARD_MOUSE_BUTTON)
+    NotifyWindowExecuteAppCommand(kBrowserForward);
+}
+#endif
 
 ui::WindowShowState NativeWindowViews::GetRestoredState() {
   if (IsMaximized())

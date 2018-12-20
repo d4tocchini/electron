@@ -122,6 +122,17 @@ describe('app module', () => {
     })
   })
 
+  describe('app.getLocaleCountryCode()', () => {
+    it('should be empty or have length of two', () => {
+      let expectedLength = 2
+      if (isCI && process.platform === 'linux') {
+        // Linux CI machines have no locale.
+        expectedLength = 0
+      }
+      expect(app.getLocaleCountryCode()).to.be.a('string').and.have.lengthOf(expectedLength)
+    })
+  })
+
   describe('app.isPackaged', () => {
     it('should be false durings tests', () => {
       expect(app.isPackaged).to.be.false()
@@ -359,6 +370,16 @@ describe('app module', () => {
       w = new BrowserWindow({ show: false })
     })
 
+    it('should emit desktop-capturer-get-sources event when desktopCapturer.getSources() is invoked', (done) => {
+      app.once('desktop-capturer-get-sources', (event, webContents) => {
+        expect(webContents).to.equal(w.webContents)
+        done()
+      })
+      w = new BrowserWindow({ show: false })
+      w.loadURL('about:blank')
+      w.webContents.executeJavaScript(`require('electron').desktopCapturer.getSources({ types: ['screen'] }, () => {})`)
+    })
+
     it('should emit remote-require event when remote.require() is invoked', (done) => {
       app.once('remote-require', (event, webContents, moduleName) => {
         expect(webContents).to.equal(w.webContents)
@@ -484,6 +505,16 @@ describe('app module', () => {
         })
         done()
       }, delay)
+    })
+
+    it('correctly sets and unsets the LoginItem', function () {
+      expect(app.getLoginItemSettings().openAtLogin).to.be.false()
+
+      app.setLoginItemSettings({ openAtLogin: true })
+      expect(app.getLoginItemSettings().openAtLogin).to.be.true()
+
+      app.setLoginItemSettings({ openAtLogin: false })
+      expect(app.getLoginItemSettings().openAtLogin).to.be.false()
     })
 
     it('correctly sets and unsets the LoginItem as hidden', function () {
@@ -748,61 +779,45 @@ describe('app module', () => {
       }
     })
 
-    it('fetches a non-empty icon', done => {
-      app.getFileIcon(iconPath, (err, icon) => {
-        expect(err).to.be.null()
-        expect(icon.isEmpty()).to.be.false()
-        done()
-      })
+    it('fetches a non-empty icon', async () => {
+      const icon = await app.getFileIcon(iconPath)
+      expect(icon.isEmpty()).to.be.false()
     })
 
-    it('fetches normal icon size by default', done => {
-      app.getFileIcon(iconPath, (err, icon) => {
-        const size = icon.getSize()
+    it('fetches normal icon size by default', async () => {
+      const icon = await app.getFileIcon(iconPath)
+      const size = icon.getSize()
 
-        expect(err).to.be.null()
-        expect(size.height).to.equal(sizes.normal)
-        expect(size.width).to.equal(sizes.normal)
-        done()
-      })
+      expect(size.height).to.equal(sizes.normal)
+      expect(size.width).to.equal(sizes.normal)
     })
 
     describe('size option', () => {
-      it('fetches a small icon', (done) => {
-        app.getFileIcon(iconPath, { size: 'small' }, (err, icon) => {
-          const size = icon.getSize()
-          expect(err).to.be.null()
-          expect(size.height).to.equal(sizes.small)
-          expect(size.width).to.equal(sizes.small)
-          done()
-        })
+      it('fetches a small icon', async () => {
+        const icon = await app.getFileIcon(iconPath, { size: 'small' })
+        const size = icon.getSize()
+
+        expect(size.height).to.equal(sizes.small)
+        expect(size.width).to.equal(sizes.small)
       })
 
-      it('fetches a normal icon', (done) => {
-        app.getFileIcon(iconPath, { size: 'normal' }, (err, icon) => {
-          const size = icon.getSize()
-          expect(err).to.be.null()
-          expect(size.height).to.equal(sizes.normal)
-          expect(size.width).to.equal(sizes.normal)
-          done()
-        })
+      it('fetches a normal icon', async () => {
+        const icon = await app.getFileIcon(iconPath, { size: 'normal' })
+        const size = icon.getSize()
+
+        expect(size.height).to.equal(sizes.normal)
+        expect(size.width).to.equal(sizes.normal)
       })
 
-      it('fetches a large icon', function (done) {
+      it('fetches a large icon', async () => {
         // macOS does not support large icons
-        if (process.platform === 'darwin') {
-          // FIXME(alexeykuzmin): Skip the test.
-          // this.skip()
-          return done()
-        }
+        if (process.platform === 'darwin') return
 
-        app.getFileIcon(iconPath, { size: 'large' }, (err, icon) => {
-          const size = icon.getSize()
-          expect(err).to.be.null()
-          expect(size.height).to.equal(sizes.large)
-          expect(size.width).to.equal(sizes.large)
-          done()
-        })
+        const icon = await app.getFileIcon(iconPath, { size: 'large' })
+        const size = icon.getSize()
+
+        expect(size.height).to.equal(sizes.large)
+        expect(size.width).to.equal(sizes.large)
       })
     })
   })
@@ -909,13 +924,21 @@ describe('app module', () => {
     const socketPath = process.platform === 'win32' ? '\\\\.\\pipe\\electron-mixed-sandbox' : '/tmp/electron-mixed-sandbox'
 
     beforeEach(function (done) {
-      // XXX(alexeykuzmin): Calling `.skip()` inside a `before` hook
-      // doesn't affect nested `describe`s.
-      // FIXME Get these specs running on Linux
-      if (process.platform === 'linux') {
+      if (process.platform === 'linux' && (process.arch === 'arm64' || process.arch === 'arm')) {
+        // Our ARM tests are run on VSTS rather than CircleCI, and the Docker
+        // setup on VSTS disallows syscalls that Chrome requires for setting up
+        // sandboxing.
+        // See:
+        // - https://docs.docker.com/engine/security/seccomp/#significant-syscalls-blocked-by-the-default-profile
+        // - https://chromium.googlesource.com/chromium/src/+/70.0.3538.124/sandbox/linux/services/credentials.cc#292
+        // - https://github.com/docker/docker-ce/blob/ba7dfc59ccfe97c79ee0d1379894b35417b40bca/components/engine/profiles/seccomp/seccomp_default.go#L497
+        // - https://blog.jessfraz.com/post/how-to-use-new-docker-seccomp-profiles/
+        //
+        // Adding `--cap-add SYS_ADMIN` or `--security-opt seccomp=unconfined`
+        // to the Docker invocation allows the syscalls that Chrome needs, but
+        // are probably more permissive than we'd like.
         this.skip()
       }
-
       fs.unlink(socketPath, () => {
         server = net.createServer()
         server.listen(socketPath)

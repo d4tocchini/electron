@@ -1,4 +1,4 @@
-From 87f31d450894df2b00c6a2d6fb7eb2639b595756 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: deepak1556 <hop2deep@gmail.com>
 Date: Thu, 20 Sep 2018 17:50:34 -0700
 Subject: ssl_security_state_tab_helper.patch
@@ -6,7 +6,7 @@ Subject: ssl_security_state_tab_helper.patch
 Allows populating security tab info for devtools in Electron.
 
 diff --git a/chrome/browser/ssl/security_state_tab_helper.cc b/chrome/browser/ssl/security_state_tab_helper.cc
-index 58066f3a532b..a1643c6492e3 100644
+index c88e2729738d28ba626e14dd95924522bca2c336..a017ea4b37a39f6d65636f3c1aecc43838b80d4f 100644
 --- a/chrome/browser/ssl/security_state_tab_helper.cc
 +++ b/chrome/browser/ssl/security_state_tab_helper.cc
 @@ -13,17 +13,23 @@
@@ -42,9 +42,9 @@ index 58066f3a532b..a1643c6492e3 100644
  #include "chrome/browser/safe_browsing/chrome_password_protection_service.h"
  #endif
  
-@@ -81,7 +87,9 @@ bool IsOriginSecureWithWhitelist(
+@@ -79,7 +85,9 @@ bool IsOriginSecureWithWhitelist(
  
- DEFINE_WEB_CONTENTS_USER_DATA_KEY(SecurityStateTabHelper);
+ }  // namespace
  
 +#if 0
  using safe_browsing::SafeBrowsingUIManager;
@@ -52,7 +52,7 @@ index 58066f3a532b..a1643c6492e3 100644
  
  SecurityStateTabHelper::SecurityStateTabHelper(
      content::WebContents* web_contents)
-@@ -89,8 +97,11 @@ SecurityStateTabHelper::SecurityStateTabHelper(
+@@ -87,8 +95,11 @@ SecurityStateTabHelper::SecurityStateTabHelper(
        logged_http_warning_on_current_navigation_(false),
        is_incognito_(false) {
    content::BrowserContext* context = web_contents->GetBrowserContext();
@@ -66,7 +66,7 @@ index 58066f3a532b..a1643c6492e3 100644
      is_incognito_ = true;
    }
  }
-@@ -175,6 +186,7 @@ void SecurityStateTabHelper::DidFinishNavigation(
+@@ -173,6 +184,7 @@ void SecurityStateTabHelper::DidFinishNavigation(
      UMA_HISTOGRAM_BOOLEAN("interstitial.ssl.visited_site_after_warning", true);
    }
  
@@ -74,7 +74,7 @@ index 58066f3a532b..a1643c6492e3 100644
    // Security indicator UI study (https://crbug.com/803501): Show a message in
    // the console to reduce developer confusion about the experimental UI
    // treatments for HTTPS pages with EV certificates.
-@@ -202,6 +214,7 @@ void SecurityStateTabHelper::DidFinishNavigation(
+@@ -200,6 +212,7 @@ void SecurityStateTabHelper::DidFinishNavigation(
            "Validation is still valid.");
      }
    }
@@ -82,7 +82,7 @@ index 58066f3a532b..a1643c6492e3 100644
  }
  
  void SecurityStateTabHelper::DidChangeVisibleSecurityState() {
-@@ -275,6 +288,7 @@ SecurityStateTabHelper::GetMaliciousContentStatus() const {
+@@ -273,6 +286,7 @@ SecurityStateTabHelper::GetMaliciousContentStatus() const {
        web_contents()->GetController().GetVisibleEntry();
    if (!entry)
      return security_state::MALICIOUS_CONTENT_STATUS_NONE;
@@ -90,7 +90,7 @@ index 58066f3a532b..a1643c6492e3 100644
    safe_browsing::SafeBrowsingService* sb_service =
        g_browser_process->safe_browsing_service();
    if (!sb_service)
-@@ -340,6 +354,7 @@ SecurityStateTabHelper::GetMaliciousContentStatus() const {
+@@ -341,6 +355,7 @@ SecurityStateTabHelper::GetMaliciousContentStatus() const {
          break;
      }
    }
@@ -98,7 +98,7 @@ index 58066f3a532b..a1643c6492e3 100644
    return security_state::MALICIOUS_CONTENT_STATUS_NONE;
  }
  
-@@ -360,15 +375,19 @@ std::vector<std::string> SecurityStateTabHelper::GetSecureOriginsAndPatterns()
+@@ -361,15 +376,19 @@ std::vector<std::string> SecurityStateTabHelper::GetSecureOriginsAndPatterns()
      const {
    const base::CommandLine& command_line =
        *base::CommandLine::ForCurrentProcess();
@@ -119,7 +119,7 @@ index 58066f3a532b..a1643c6492e3 100644
    return secure_origin_whitelist::ParseWhitelist(origins_str);
  }
 diff --git a/chrome/common/secure_origin_whitelist.cc b/chrome/common/secure_origin_whitelist.cc
-index 3319df136d4d..fbc6eea480d2 100644
+index 3319df136d4d32aad066fe98bfadacfb3c05322a..fbc6eea480d23e7158bbbfb8dc77926824b94c3d 100644
 --- a/chrome/common/secure_origin_whitelist.cc
 +++ b/chrome/common/secure_origin_whitelist.cc
 @@ -13,7 +13,9 @@
@@ -142,6 +142,3 @@ index 3319df136d4d..fbc6eea480d2 100644
    return schemes;
  }
  
--- 
-2.17.0
-

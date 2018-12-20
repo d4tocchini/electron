@@ -76,9 +76,6 @@
   NSButton* miniaturize_button =
       [NSWindow standardWindowButton:NSWindowMiniaturizeButton
                         forStyleMask:NSWindowStyleMaskTitled];
-  NSButton* zoom_button =
-      [NSWindow standardWindowButton:NSWindowZoomButton
-                        forStyleMask:NSWindowStyleMaskTitled];
 
   CGFloat x = 0;
   const CGFloat space_between = 20;
@@ -91,11 +88,7 @@
   x += space_between;
   [self addSubview:miniaturize_button];
 
-  [zoom_button setFrameOrigin:NSMakePoint(x, 0)];
-  x += space_between;
-  [self addSubview:zoom_button];
-
-  const auto last_button_frame = zoom_button.frame;
+  const auto last_button_frame = miniaturize_button.frame;
   [self setFrameSize:NSMakeSize(last_button_frame.origin.x +
                                     last_button_frame.size.width,
                                 last_button_frame.size.height)];
@@ -341,6 +334,9 @@ NativeWindowMac::NativeWindowMac(const mate::Dictionary& options,
   if (!useStandardWindow || transparent() || !has_frame()) {
     styleMask |= NSTexturedBackgroundWindowMask;
   }
+  if (resizable_) {
+    styleMask |= NSResizableWindowMask;
+  }
 
   // Create views::Widget and assign window_ with it.
   // TODO(zcbenz): Get rid of the window_ in future.
@@ -477,7 +473,8 @@ NativeWindowMac::NativeWindowMac(const mate::Dictionary& options,
 }
 
 NativeWindowMac::~NativeWindowMac() {
-  [NSEvent removeMonitor:wheel_event_monitor_];
+  if (wheel_event_monitor_)
+    [NSEvent removeMonitor:wheel_event_monitor_];
 }
 
 void NativeWindowMac::SetContentView(views::View* view) {
@@ -514,6 +511,18 @@ void NativeWindowMac::Close() {
 }
 
 void NativeWindowMac::CloseImmediately() {
+  // Remove event monitor before destroying window, otherwise the monitor may
+  // call its callback after window has been destroyed.
+  if (wheel_event_monitor_) {
+    [NSEvent removeMonitor:wheel_event_monitor_];
+    wheel_event_monitor_ = nil;
+  }
+
+  // Retain the child window before closing it. If the last reference to the
+  // NSWindow goes away inside -[NSWindow close], then bad stuff can happen.
+  // See e.g. http://crbug.com/616701.
+  base::scoped_nsobject<NSWindow> child_window(window_,
+                                               base::scoped_policy::RETAIN);
   [window_ close];
 }
 
@@ -585,13 +594,13 @@ bool NativeWindowMac::IsEnabled() {
 
 void NativeWindowMac::SetEnabled(bool enable) {
   if (enable) {
+    [window_ endSheet:[window_ attachedSheet]];
+  } else {
     [window_ beginSheet:window_
         completionHandler:^(NSModalResponse returnCode) {
           NSLog(@"modal enabled");
           return;
         }];
-  } else {
-    [window_ endSheet:[window_ attachedSheet]];
   }
 }
 
@@ -1101,6 +1110,10 @@ gfx::AcceleratedWidget NativeWindowMac::GetAcceleratedWidget() const {
   return gfx::kNullAcceleratedWidget;
 }
 
+NativeWindowHandle NativeWindowMac::GetNativeWindowHandle() const {
+  return [window_ contentView];
+}
+
 void NativeWindowMac::SetProgressBar(double progress,
                                      const NativeWindow::ProgressState state) {
   NSDockTile* dock_tile = [NSApp dockTile];
@@ -1226,14 +1239,12 @@ void NativeWindowMac::SetVibrancy(const std::string& type) {
 
       [vibrant_view removeFromSuperview];
       [window_ setVibrantView:nil];
-      ui::GpuSwitchingManager::SetTransparent(transparent());
 
       return;
     }
 
     background_color_before_vibrancy_.reset([[window_ backgroundColor] retain]);
     transparency_before_vibrancy_ = [window_ titlebarAppearsTransparent];
-    ui::GpuSwitchingManager::SetTransparent(true);
 
     if (title_bar_style_ != NORMAL) {
       [window_ setTitlebarAppearsTransparent:YES];
@@ -1357,9 +1368,8 @@ views::View* NativeWindowMac::GetContentsView() {
 
 void NativeWindowMac::AddContentViewLayers() {
   // Make sure the bottom corner is rounded for non-modal windows:
-  // http://crbug.com/396264. But do not enable it on OS X 10.9 for transparent
-  // window, otherwise a semi-transparent frame would show.
-  if (!(transparent() && base::mac::IsOS10_9()) && !is_modal()) {
+  // http://crbug.com/396264.
+  if (!is_modal()) {
     // For normal window, we need to explicitly set layer for contentView to
     // make setBackgroundColor work correctly.
     // There is no need to do so for frameless window, and doing so would make
@@ -1394,16 +1404,12 @@ void NativeWindowMac::AddContentViewLayers() {
     if (title_bar_style_ == CUSTOM_BUTTONS_ON_HOVER) {
       buttons_view_.reset(
           [[CustomWindowButtonView alloc] initWithFrame:NSZeroRect]);
+      // NSWindowStyleMaskFullSizeContentView does not work with zoom button
+      SetFullScreenable(false);
       [[window_ contentView] addSubview:buttons_view_];
     } else {
-      if (title_bar_style_ != NORMAL) {
-        if (base::mac::IsOS10_9()) {
-          ShowWindowButton(NSWindowZoomButton);
-          ShowWindowButton(NSWindowMiniaturizeButton);
-          ShowWindowButton(NSWindowCloseButton);
-        }
+      if (title_bar_style_ != NORMAL)
         return;
-      }
 
       // Hide the window buttons.
       [[window_ standardWindowButton:NSWindowZoomButton] setHidden:YES];

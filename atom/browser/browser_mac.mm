@@ -9,13 +9,13 @@
 #include "atom/browser/mac/dict_util.h"
 #include "atom/browser/native_window.h"
 #include "atom/browser/window_list.h"
+#include "atom/common/application_info.h"
 #include "atom/common/platform_util.h"
 #include "base/mac/bundle_locations.h"
 #include "base/mac/foundation_util.h"
 #include "base/mac/mac_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/sys_string_conversions.h"
-#include "brightray/common/application_info.h"
 #include "net/base/mac/url_conversions.h"
 #include "ui/gfx/image/image.h"
 #include "url/gurl.h"
@@ -278,7 +278,9 @@ void RemoveFromLoginItems() {
 
 void Browser::SetLoginItemSettings(LoginItemSettings settings) {
 #if defined(MAS_BUILD)
-  platform_util::SetLoginItemEnabled(settings.open_at_login);
+  if (!platform_util::SetLoginItemEnabled(settings.open_at_login)) {
+    LOG(ERROR) << "Unable to set login item enabled on sandboxed app.";
+  }
 #else
   if (settings.open_at_login)
     base::mac::AddToLoginItems(settings.open_as_hidden);
@@ -289,11 +291,11 @@ void Browser::SetLoginItemSettings(LoginItemSettings settings) {
 }
 
 std::string Browser::GetExecutableFileVersion() const {
-  return brightray::GetApplicationVersion();
+  return GetApplicationVersion();
 }
 
 std::string Browser::GetExecutableFileProductName() const {
-  return brightray::GetApplicationName();
+  return GetApplicationName();
 }
 
 int Browser::DockBounce(BounceType type) {
@@ -392,13 +394,12 @@ void Browser::ShowAboutPanel() {
 void Browser::SetAboutPanelOptions(const base::DictionaryValue& options) {
   about_panel_options_.Clear();
 
-  // Upper case option keys for orderFrontStandardAboutPanelWithOptions format
-  for (base::DictionaryValue::Iterator iter(options); !iter.IsAtEnd();
-       iter.Advance()) {
-    std::string key = iter.key();
-    if (!key.empty() && iter.value().is_string()) {
+  for (const auto& pair : options) {
+    std::string key = pair.first;
+    const auto& val = pair.second;
+    if (!key.empty() && val->is_string()) {
       key[0] = base::ToUpperASCII(key[0]);
-      about_panel_options_.SetString(key, iter.value().GetString());
+      about_panel_options_.SetString(key, val->GetString());
     }
   }
 }

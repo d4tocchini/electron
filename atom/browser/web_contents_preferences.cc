@@ -30,8 +30,6 @@
 #include "ui/gfx/switches.h"
 #endif
 
-DEFINE_WEB_CONTENTS_USER_DATA_KEY(atom::WebContentsPreferences);
-
 namespace {
 
 bool GetAsString(const base::Value* val,
@@ -247,10 +245,12 @@ void WebContentsPreferences::AppendCommandLineSwitches(
   // If the `sandbox` option was passed to the BrowserWindow's webPreferences,
   // pass `--enable-sandbox` to the renderer so it won't have any node.js
   // integration.
-  if (IsEnabled(options::kSandbox))
+  if (IsEnabled(options::kSandbox)) {
     command_line->AppendSwitch(switches::kEnableSandbox);
-  else if (!command_line->HasSwitch(switches::kEnableSandbox))
+  } else if (!command_line->HasSwitch(switches::kEnableSandbox)) {
     command_line->AppendSwitch(service_manager::switches::kNoSandbox);
+    command_line->AppendSwitch(::switches::kNoZygote);
+  }
 
   // Check if nativeWindowOpen is enabled.
   if (IsEnabled(options::kNativeWindowOpen))
@@ -405,8 +405,6 @@ void WebContentsPreferences::OverrideWebkitPrefs(
   std::string encoding;
   if (GetAsString(&preference_, "defaultEncoding", &encoding))
     prefs->default_encoding = encoding;
-
-  prefs->node_integration = IsEnabled(options::kNodeIntegration);
 }
 
 }  // namespace atom

@@ -20,6 +20,7 @@
 #include "content/browser/renderer_host/render_widget_host_impl.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
+#include "gin/converter.h"
 #include "native_mate/dictionary.h"
 #include "ui/gl/gpu_switching_manager.h"
 
@@ -73,10 +74,6 @@ BrowserWindow::BrowserWindow(v8::Isolate* isolate,
   // Keep a copy of the options for later use.
   mate::Dictionary(isolate, web_contents->GetWrapper())
       .Set("browserWindowOptions", options);
-
-  // Tell the content module to initialize renderer widget with transparent
-  // mode.
-  ui::GpuSwitchingManager::SetTransparent(window()->transparent());
 
   // Associate with BrowserWindow.
   web_contents->SetOwnerWindow(window());
@@ -315,7 +312,7 @@ void BrowserWindow::SetBrowserView(v8::Local<v8::Value> value) {
 
 void BrowserWindow::SetVibrancy(v8::Isolate* isolate,
                                 v8::Local<v8::Value> value) {
-  std::string type = mate::V8ToString(value);
+  std::string type = gin::V8ToString(isolate, value);
 
   auto* render_view_host = web_contents()->GetRenderViewHost();
   if (render_view_host) {
@@ -385,7 +382,9 @@ void BrowserWindow::Cleanup() {
   if (host)
     host->GetWidget()->RemoveInputEventObserver(this);
 
-  api_web_contents_->DestroyWebContents(true /* async */);
+  // Destroy WebContents asynchronously unless app is shutting down,
+  // because destroy() might be called inside WebContents's event handler.
+  api_web_contents_->DestroyWebContents(!Browser::Get()->is_shutting_down());
   Observe(nullptr);
 }
 

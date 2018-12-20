@@ -20,6 +20,7 @@
 #include "atom/common/native_mate_converters/value_converter.h"
 #include "atom/common/options_switches.h"
 #include "electron/buildflags/buildflags.h"
+#include "gin/converter.h"
 #include "native_mate/handle.h"
 #include "native_mate/persistent_dictionary.h"
 
@@ -266,7 +267,7 @@ void TopLevelWindow::OnWindowAlwaysOnTopChanged() {
   Emit("always-on-top-changed", IsAlwaysOnTop());
 }
 
-void TopLevelWindow::OnExecuteWindowsCommand(const std::string& command_name) {
+void TopLevelWindow::OnExecuteAppCommand(const std::string& command_name) {
   Emit("app-command", command_name);
 }
 
@@ -643,7 +644,8 @@ void TopLevelWindow::SetFocusable(bool focusable) {
 void TopLevelWindow::SetMenu(v8::Isolate* isolate, v8::Local<v8::Value> value) {
   mate::Handle<Menu> menu;
   if (value->IsObject() &&
-      mate::V8ToString(value->ToObject()->GetConstructorName()) == "Menu" &&
+      gin::V8ToString(
+          isolate, value->ToObject(isolate)->GetConstructorName()) == "Menu" &&
       mate::ConvertFromV8(isolate, value, &menu) && !menu.IsEmpty()) {
     menu_.Reset(isolate, menu.ToV8());
     window_->SetMenu(menu->model());
@@ -669,6 +671,7 @@ void TopLevelWindow::SetParentWindow(v8::Local<v8::Value> value,
     parent_window_.Reset();
     window_->SetParentWindow(nullptr);
   } else if (mate::ConvertFromV8(isolate(), value, &parent)) {
+    RemoveFromParentChildWindows();
     parent_window_.Reset(isolate(), value);
     window_->SetParentWindow(parent->window_.get());
     parent->child_windows_.Set(isolate(), weak_map_id(), GetWrapper());
@@ -691,8 +694,11 @@ void TopLevelWindow::SetBrowserView(v8::Local<v8::Value> value) {
 }
 
 v8::Local<v8::Value> TopLevelWindow::GetNativeWindowHandle() {
-  gfx::AcceleratedWidget handle = window_->GetAcceleratedWidget();
-  return ToBuffer(isolate(), static_cast<void*>(&handle), sizeof(handle));
+  // TODO(MarshallOfSound): Replace once
+  // https://chromium-review.googlesource.com/c/chromium/src/+/1253094/ has
+  // landed
+  NativeWindowHandle handle = window_->GetNativeWindowHandle();
+  return ToBuffer(isolate(), &handle, sizeof(handle));
 }
 
 void TopLevelWindow::SetProgressBar(double progress, mate::Arguments* args) {
@@ -737,7 +743,7 @@ void TopLevelWindow::SetAutoHideCursor(bool auto_hide) {
 
 void TopLevelWindow::SetVibrancy(v8::Isolate* isolate,
                                  v8::Local<v8::Value> value) {
-  std::string type = mate::V8ToString(value);
+  std::string type = gin::V8ToString(isolate, value);
   window_->SetVibrancy(type);
 }
 
@@ -1056,9 +1062,7 @@ void TopLevelWindow::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("setContentProtection", &TopLevelWindow::SetContentProtection)
       .SetMethod("setFocusable", &TopLevelWindow::SetFocusable)
       .SetMethod("setMenu", &TopLevelWindow::SetMenu)
-#if !defined(OS_WIN)
       .SetMethod("setParentWindow", &TopLevelWindow::SetParentWindow)
-#endif
       .SetMethod("setBrowserView", &TopLevelWindow::SetBrowserView)
       .SetMethod("getNativeWindowHandle",
                  &TopLevelWindow::GetNativeWindowHandle)

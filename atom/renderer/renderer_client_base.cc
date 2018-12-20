@@ -55,7 +55,7 @@
 #endif  // BUILDFLAG(ENABLE_TTS)
 
 #if BUILDFLAG(ENABLE_PRINTING)
-#include "chrome/renderer/printing/chrome_print_render_frame_helper_delegate.h"
+#include "atom/renderer/printing/print_render_frame_helper_delegate.h"
 #include "components/printing/renderer/print_render_frame_helper.h"
 #endif  // BUILDFLAG(ENABLE_PRINTING)
 
@@ -153,7 +153,6 @@ void RendererClientBase::RenderThreadStarted() {
   // In Chrome we should set extension's origins to match the pages they can
   // work on, but in Electron currently we just let extensions do anything.
   blink::SchemeRegistry::RegisterURLSchemeAsSecure(extension_scheme);
-  blink::SchemeRegistry::RegisterURLSchemeAsCORSEnabled(extension_scheme);
   blink::SchemeRegistry::RegisterURLSchemeAsBypassingContentSecurityPolicy(
       extension_scheme);
 
@@ -192,7 +191,7 @@ void RendererClientBase::RenderFrameCreated(
   new ContentSettingsObserver(render_frame);
 #if BUILDFLAG(ENABLE_PRINTING)
   new printing::PrintRenderFrameHelper(
-      render_frame, std::make_unique<ChromePrintRenderFrameHelperDelegate>());
+      render_frame, std::make_unique<atom::PrintRenderFrameHelperDelegate>());
 #endif
 
 #if BUILDFLAG(ENABLE_PDF_VIEWER)
@@ -276,6 +275,16 @@ v8::Local<v8::Context> RendererClientBase::GetContext(
     return frame->WorldScriptContext(isolate, World::ISOLATED_WORLD);
   else
     return frame->MainWorldScriptContext();
+}
+
+v8::Local<v8::Value> RendererClientBase::RunScript(
+    v8::Local<v8::Context> context,
+    v8::Local<v8::String> source) {
+  auto maybe_script = v8::Script::Compile(context, source);
+  v8::Local<v8::Script> script;
+  if (!maybe_script.ToLocal(&script))
+    return v8::Local<v8::Value>();
+  return script->Run(context).ToLocalChecked();
 }
 
 }  // namespace atom

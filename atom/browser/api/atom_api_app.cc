@@ -13,6 +13,7 @@
 #include "atom/browser/api/gpuinfo_manager.h"
 #include "atom/browser/atom_browser_context.h"
 #include "atom/browser/atom_browser_main_parts.h"
+#include "atom/browser/atom_paths.h"
 #include "atom/browser/login_handler.h"
 #include "atom/browser/relauncher.h"
 #include "atom/common/atom_command_line.h"
@@ -31,7 +32,6 @@
 #include "base/path_service.h"
 #include "base/strings/string_util.h"
 #include "base/sys_info.h"
-#include "brightray/browser/brightray_paths.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/icon_manager.h"
 #include "chrome/common/chrome_paths.h"
@@ -65,6 +65,7 @@
 #endif
 
 #if defined(OS_MACOSX)
+#include <CoreFoundation/CoreFoundation.h>
 #include "atom/browser/ui/cocoa/atom_bundle_mover.h"
 #endif
 
@@ -395,15 +396,15 @@ IconLoader::IconSize GetIconSizeByString(const std::string& size) {
 // Return the path constant from string.
 int GetPathConstant(const std::string& name) {
   if (name == "appData")
-    return brightray::DIR_APP_DATA;
+    return DIR_APP_DATA;
   else if (name == "userData")
-    return brightray::DIR_USER_DATA;
+    return DIR_USER_DATA;
   else if (name == "cache")
-    return brightray::DIR_CACHE;
+    return DIR_CACHE;
   else if (name == "userCache")
-    return brightray::DIR_USER_CACHE;
+    return DIR_USER_CACHE;
   else if (name == "logs")
-    return brightray::DIR_APP_LOGS;
+    return DIR_APP_LOGS;
   else if (name == "home")
     return base::DIR_HOME;
   else if (name == "temp")
@@ -535,17 +536,15 @@ int ImportIntoCertStore(CertificateManagerModel* model,
 #endif
 
 void OnIconDataAvailable(v8::Isolate* isolate,
-                         const App::FileIconCallback& callback,
+                         scoped_refptr<util::Promise> promise,
                          gfx::Image* icon) {
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
 
   if (icon && !icon->IsEmpty()) {
-    callback.Run(v8::Null(isolate), *icon);
+    promise->Resolve(*icon);
   } else {
-    v8::Local<v8::String> error_message =
-        v8::String::NewFromUtf8(isolate, "Failed to get file icon.");
-    callback.Run(v8::Exception::Error(error_message), gfx::Image());
+    promise->RejectWithErrorMessage("Failed to get file icon.");
   }
 }
 
@@ -787,24 +786,24 @@ void App::OnGpuProcessCrashed(base::TerminationStatus status) {
 
 void App::BrowserChildProcessLaunchedAndConnected(
     const content::ChildProcessData& data) {
-  ChildProcessLaunched(data.process_type, data.handle);
+  ChildProcessLaunched(data.process_type, data.GetHandle());
 }
 
 void App::BrowserChildProcessHostDisconnected(
     const content::ChildProcessData& data) {
-  ChildProcessDisconnected(base::GetProcId(data.handle));
+  ChildProcessDisconnected(base::GetProcId(data.GetHandle()));
 }
 
 void App::BrowserChildProcessCrashed(
     const content::ChildProcessData& data,
     const content::ChildProcessTerminationInfo& info) {
-  ChildProcessDisconnected(base::GetProcId(data.handle));
+  ChildProcessDisconnected(base::GetProcId(data.GetHandle()));
 }
 
 void App::BrowserChildProcessKilled(
     const content::ChildProcessData& data,
     const content::ChildProcessTerminationInfo& info) {
-  ChildProcessDisconnected(base::GetProcId(data.handle));
+  ChildProcessDisconnected(base::GetProcId(data.GetHandle()));
 }
 
 void App::RenderProcessReady(content::RenderProcessHost* host) {
@@ -882,6 +881,45 @@ std::string App::GetLocale() {
   return g_browser_process->GetApplicationLocale();
 }
 
+std::string App::GetLocaleCountryCode() {
+  std::string region;
+#if defined(OS_WIN)
+  WCHAR locale_name[LOCALE_NAME_MAX_LENGTH] = {0};
+
+  if (GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SISO3166CTRYNAME,
+                      (LPWSTR)&locale_name,
+                      sizeof(locale_name) / sizeof(WCHAR)) ||
+      GetLocaleInfoEx(LOCALE_NAME_SYSTEM_DEFAULT, LOCALE_SISO3166CTRYNAME,
+                      (LPWSTR)&locale_name,
+                      sizeof(locale_name) / sizeof(WCHAR))) {
+    base::WideToUTF8(locale_name, wcslen(locale_name), &region);
+  }
+#elif defined(OS_MACOSX)
+  CFLocaleRef locale = CFLocaleCopyCurrent();
+  CFStringRef value = CFStringRef(
+      static_cast<CFTypeRef>(CFLocaleGetValue(locale, kCFLocaleCountryCode)));
+  const CFIndex kCStringSize = 128;
+  char temporaryCString[kCStringSize] = {0};
+  CFStringGetCString(value, temporaryCString, kCStringSize,
+                     kCFStringEncodingUTF8);
+  region = temporaryCString;
+#else
+  const char* locale_ptr = setlocale(LC_TIME, NULL);
+  if (!locale_ptr)
+    locale_ptr = setlocale(LC_NUMERIC, NULL);
+  if (locale_ptr) {
+    std::string locale = locale_ptr;
+    std::string::size_type rpos = locale.find('.');
+    if (rpos != std::string::npos)
+      locale = locale.substr(0, rpos);
+    rpos = locale.find('_');
+    if (rpos != std::string::npos && rpos + 1 < locale.size())
+      region = locale.substr(rpos + 1);
+  }
+#endif
+  return region.size() == 2 ? region : std::string();
+}
+
 void App::OnSecondInstance(const base::CommandLine::StringVector& cmd,
                            const base::FilePath& cwd) {
   Emit("second-instance", cmd, cwd);
@@ -898,7 +936,7 @@ bool App::RequestSingleInstanceLock() {
     return true;
 
   base::FilePath user_dir;
-  base::PathService::Get(brightray::DIR_USER_DATA, &user_dir);
+  base::PathService::Get(DIR_USER_DATA, &user_dir);
 
   auto cb = base::Bind(&App::OnSecondInstance, base::Unretained(this));
 
@@ -1085,16 +1123,16 @@ JumpListResult App::SetJumpList(v8::Local<v8::Value> val,
 }
 #endif  // defined(OS_WIN)
 
-void App::GetFileIcon(const base::FilePath& path, mate::Arguments* args) {
-  mate::Dictionary options;
-  IconLoader::IconSize icon_size;
-  FileIconCallback callback;
-
+v8::Local<v8::Promise> App::GetFileIcon(const base::FilePath& path,
+                                        mate::Arguments* args) {
   v8::Locker locker(isolate());
   v8::HandleScope handle_scope(isolate());
 
+  scoped_refptr<util::Promise> promise = new util::Promise(isolate());
   base::FilePath normalized_path = path.NormalizePathSeparators();
 
+  IconLoader::IconSize icon_size;
+  mate::Dictionary options;
   if (!args->GetNext(&options)) {
     icon_size = IconLoader::IconSize::NORMAL;
   } else {
@@ -1103,22 +1141,17 @@ void App::GetFileIcon(const base::FilePath& path, mate::Arguments* args) {
     icon_size = GetIconSizeByString(icon_size_string);
   }
 
-  if (!args->GetNext(&callback)) {
-    args->ThrowError("Missing required callback function");
-    return;
-  }
-
   auto* icon_manager = AtomBrowserMainParts::Get()->GetIconManager();
   gfx::Image* icon =
       icon_manager->LookupIconFromFilepath(normalized_path, icon_size);
   if (icon) {
-    callback.Run(v8::Null(isolate()), *icon);
+    promise->Resolve(*icon);
   } else {
-    icon_manager->LoadIcon(
-        normalized_path, icon_size,
-        base::Bind(&OnIconDataAvailable, isolate(), callback),
-        &cancelable_task_tracker_);
+    icon_manager->LoadIcon(normalized_path, icon_size,
+                           base::Bind(&OnIconDataAvailable, isolate(), promise),
+                           &cancelable_task_tracker_);
   }
+  return promise->GetHandle();
 }
 
 std::vector<mate::Dictionary> App::GetAppMetrics(v8::Isolate* isolate) {
@@ -1290,8 +1323,15 @@ void App::BuildPrototype(v8::Isolate* isolate,
                  base::Bind(&Browser::InvalidateCurrentActivity, browser))
       .SetMethod("updateCurrentActivity",
                  base::Bind(&Browser::UpdateCurrentActivity, browser))
+      // TODO(juturu): Remove in 2.0, deprecate before then with warnings
+      .SetMethod("moveToApplicationsFolder", &App::MoveToApplicationsFolder)
+      .SetMethod("isInApplicationsFolder", &App::IsInApplicationsFolder)
+#endif
+#if defined(OS_MACOSX) || defined(OS_LINUX)
       .SetMethod("setAboutPanelOptions",
                  base::Bind(&Browser::SetAboutPanelOptions, browser))
+      .SetMethod("showAboutPanel",
+                 base::Bind(&Browser::ShowAboutPanel, browser))
 #endif
 #if defined(OS_WIN)
       .SetMethod("setUserTasks", base::Bind(&Browser::SetUserTasks, browser))
@@ -1308,6 +1348,7 @@ void App::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("getPath", &App::GetPath)
       .SetMethod("setDesktopName", &App::SetDesktopName)
       .SetMethod("getLocale", &App::GetLocale)
+      .SetMethod("getLocaleCountryCode", &App::GetLocaleCountryCode)
 #if defined(USE_NSS_CERTS)
       .SetMethod("importCertificate", &App::ImportCertificate)
 #endif
@@ -1327,11 +1368,6 @@ void App::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("getAppMetrics", &App::GetAppMetrics)
       .SetMethod("getGPUFeatureStatus", &App::GetGPUFeatureStatus)
       .SetMethod("getGPUInfo", &App::GetGPUInfo)
-// TODO(juturu): Remove in 2.0, deprecate before then with warnings
-#if defined(OS_MACOSX)
-      .SetMethod("moveToApplicationsFolder", &App::MoveToApplicationsFolder)
-      .SetMethod("isInApplicationsFolder", &App::IsInApplicationsFolder)
-#endif
 #if defined(MAS_BUILD)
       .SetMethod("startAccessingSecurityScopedResource",
                  &App::StartAccessingSecurityScopedResource)

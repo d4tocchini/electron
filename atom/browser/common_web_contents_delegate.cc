@@ -19,7 +19,7 @@
 #include "atom/common/options_switches.h"
 #include "base/files/file_util.h"
 #include "base/json/json_reader.h"
-#include "base/task_scheduler/post_task.h"
+#include "base/task/post_task.h"
 #include "base/threading/sequenced_task_runner_handle.h"
 #include "chrome/browser/ssl/security_state_tab_helper.h"
 #include "chrome/browser/ui/browser_dialogs.h"
@@ -40,12 +40,13 @@
 #include "storage/browser/fileapi/isolated_context.h"
 
 #if BUILDFLAG(ENABLE_OSR)
-#include "atom/browser/osr/osr_render_widget_host_view.h"
+#include "atom/browser/osr/osr_web_contents_view.h"
 #endif
 
 #if BUILDFLAG(ENABLE_PRINTING)
-#include "atom/browser/atom_print_preview_message_handler.h"
+#include "atom/browser/printing/print_preview_message_handler.h"
 #include "chrome/browser/printing/print_view_manager_basic.h"
+#include "components/printing/browser/print_manager_utils.h"
 #endif
 
 using content::BrowserThread;
@@ -178,8 +179,9 @@ void CommonWebContentsDelegate::InitWithWebContents(
   web_contents->SetDelegate(this);
 
 #if BUILDFLAG(ENABLE_PRINTING)
+  PrintPreviewMessageHandler::CreateForWebContents(web_contents);
   printing::PrintViewManagerBasic::CreateForWebContents(web_contents);
-  AtomPrintPreviewMessageHandler::CreateForWebContents(web_contents);
+  printing::CreateCompositeClientIfNeeded(web_contents);
 #endif
 
   // Determien whether the WebContents is offscreen.
@@ -213,9 +215,9 @@ void CommonWebContentsDelegate::SetOwnerWindow(
         NativeWindowRelay::kNativeWindowRelayUserDataKey);
   }
 #if BUILDFLAG(ENABLE_OSR)
-  auto* osr_rwhv = GetOffScreenRenderWidgetHostView();
-  if (osr_rwhv)
-    osr_rwhv->SetNativeWindow(owner_window);
+  auto* osr_wcv = GetOffScreenWebContentsView();
+  if (osr_wcv)
+    osr_wcv->SetNativeWindow(owner_window);
 #endif
 }
 
@@ -254,8 +256,8 @@ content::WebContents* CommonWebContentsDelegate::GetDevToolsWebContents()
 }
 
 #if BUILDFLAG(ENABLE_OSR)
-OffScreenRenderWidgetHostView*
-CommonWebContentsDelegate::GetOffScreenRenderWidgetHostView() const {
+OffScreenWebContentsView*
+CommonWebContentsDelegate::GetOffScreenWebContentsView() const {
   return nullptr;
 }
 #endif
@@ -342,6 +344,19 @@ blink::WebSecurityStyle CommonWebContentsDelegate::GetSecurityStyle(
   helper->GetSecurityInfo(&security_info);
   return security_state::GetSecurityStyle(security_info,
                                           security_style_explanations);
+}
+
+bool CommonWebContentsDelegate::TakeFocus(content::WebContents* source,
+                                          bool reverse) {
+  if (source && source->GetOutermostWebContents() == source) {
+    // If this is the outermost web contents and the user has tabbed or
+    // shift + tabbed through all the elements, reset the focus back to
+    // the first or last element so that it doesn't stay in the body.
+    source->FocusThroughTabTraversal(reverse);
+    return true;
+  }
+
+  return false;
 }
 
 void CommonWebContentsDelegate::DevToolsSaveToFile(const std::string& url,

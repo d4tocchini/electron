@@ -120,7 +120,7 @@ void URLRequestBufferJob::Kill() {
 }
 
 void URLRequestBufferJob::GetResponseInfo(net::HttpResponseInfo* info) {
-  std::string status("HTTP/1.1 200 OK");
+  std::string status("HTTP/1.1 ");
   status.append(base::IntToString(status_code_));
   status.append(" ");
   status.append(net::GetHttpReasonPhrase(status_code_));
@@ -143,7 +143,7 @@ int URLRequestBufferJob::GetRefCountedData(
     std::string* mime_type,
     std::string* charset,
     scoped_refptr<base::RefCountedMemory>* data,
-    const net::CompletionCallback& callback) const {
+    net::CompletionOnceCallback callback) const {
   *mime_type = mime_type_;
   *charset = charset_;
   *data = data_;

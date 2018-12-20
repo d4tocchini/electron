@@ -1,4 +1,4 @@
-From cc50dccf546c8bd730fb42e912e0cd231c9b1f84 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Cheng Zhao <zcbenz@gmail.com>
 Date: Thu, 20 Sep 2018 17:49:03 -0700
 Subject: scroll_bounce_flag.patch
@@ -6,7 +6,7 @@ Subject: scroll_bounce_flag.patch
 Patch to make scrollBounce option work.
 
 diff --git a/content/renderer/render_thread_impl.cc b/content/renderer/render_thread_impl.cc
-index c078565cef71..5c31ab7654d0 100644
+index b36daaee097a56a5180cc79a6dcf730bc22afdce..2ec1bd2b81d64874fba60b4994c2dd215f4ddc42 100644
 --- a/content/renderer/render_thread_impl.cc
 +++ b/content/renderer/render_thread_impl.cc
 @@ -1610,7 +1610,7 @@ bool RenderThreadImpl::IsGpuMemoryBufferCompositorResourcesEnabled() {
@@ -18,6 +18,3 @@ index c078565cef71..5c31ab7654d0 100644
  }
  
  bool RenderThreadImpl::IsUseZoomForDSFEnabled() {
--- 
-2.17.0
-

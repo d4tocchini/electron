@@ -12,7 +12,7 @@
 #include "atom/common/native_mate_converters/net_converter.h"
 #include "atom/common/native_mate_converters/v8_value_converter.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/task_scheduler/post_task.h"
+#include "base/task/post_task.h"
 #include "content/public/browser/browser_thread.h"
 
 namespace atom {
@@ -71,14 +71,27 @@ void URLRequestAsyncAsarJob::StartAsync(std::unique_ptr<base::Value> options,
   }
 
   std::string file_path;
+  response_headers_ = new net::HttpResponseHeaders("HTTP/1.1 200 OK");
   if (options->is_dict()) {
-    auto* path_value =
-        options->FindKeyOfType("path", base::Value::Type::STRING);
-    if (path_value)
-      file_path = path_value->GetString();
+    base::DictionaryValue* dict =
+        static_cast<base::DictionaryValue*>(options.get());
+    base::Value* pathValue =
+        dict->FindKeyOfType("path", base::Value::Type::STRING);
+    if (pathValue) {
+      file_path = pathValue->GetString();
+    }
+    base::Value* headersValue =
+        dict->FindKeyOfType("headers", base::Value::Type::DICTIONARY);
+    if (headersValue) {
+      for (const auto& iter : headersValue->DictItems()) {
+        response_headers_->AddHeader(iter.first + ": " +
+                                     iter.second.GetString());
+      }
+    }
   } else if (options->is_string()) {
     file_path = options->GetString();
   }
+  response_headers_->AddHeader(kCORSHeader);
 
   if (file_path.empty()) {
     NotifyStartError(net::URLRequestStatus(net::URLRequestStatus::FAILED,
@@ -103,11 +116,7 @@ void URLRequestAsyncAsarJob::Kill() {
 }
 
 void URLRequestAsyncAsarJob::GetResponseInfo(net::HttpResponseInfo* info) {
-  std::string status("HTTP/1.1 200 OK");
-  auto* headers = new net::HttpResponseHeaders(status);
-
-  headers->AddHeader(kCORSHeader);
-  info->headers = headers;
+  info->headers = response_headers_;
 }
 
 }  // namespace atom

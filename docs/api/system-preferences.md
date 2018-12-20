@@ -32,8 +32,14 @@ Returns:
 Returns:
 
 * `event` Event
-* `invertedColorScheme` Boolean - `true` if an inverted color scheme, such as
-  a high contrast theme, is being used, `false` otherwise.
+* `invertedColorScheme` Boolean - `true` if an inverted color scheme (a high contrast color scheme with light text and dark backgrounds) is being used, `false` otherwise.
+
+### Event: 'high-contrast-color-scheme-changed' _Windows_
+
+Returns:
+
+* `event` Event
+* `highContrastColorScheme` Boolean - `true` if a high contrast theme is being used, `false` otherwise.
 
 ### Event: 'appearance-changed' _macOS_
 
@@ -53,10 +59,11 @@ Returns `Boolean` - Whether the system is in Dark Mode.
 
 Returns `Boolean` - Whether the Swipe between pages setting is on.
 
-### `systemPreferences.postNotification(event, userInfo)` _macOS_
+### `systemPreferences.postNotification(event, userInfo[, deliverImmediately])` _macOS_
 
 * `event` String
 * `userInfo` Object
+* `deliverImmediately` Boolean (optional) - `true` to post notifications immediately even when the subscribing app is inactive.
 
 Posts `event` as native notifications of macOS. The `userInfo` is an Object
 that contains the user information dictionary sent along with the notification.
@@ -83,6 +90,8 @@ that contains the user information dictionary sent along with the notification.
 * `callback` Function
   * `event` String
   * `userInfo` Object
+  
+Returns `Number` - The ID of this subscription
 
 Subscribes to native notifications of macOS, `callback` will be called with
 `callback(event, userInfo)` when the corresponding `event` happens. The
@@ -106,6 +115,8 @@ example values of `event` are:
 * `callback` Function
   * `event` String
   * `userInfo` Object
+  
+Returns `Number` - The ID of this subscription
 
 Same as `subscribeNotification`, but uses `NSNotificationCenter` for local defaults.
 This is necessary for events such as `NSUserDefaultsDidChangeNotification`.
@@ -276,12 +287,15 @@ const alpha = color.substr(6, 2) // "dd"
 Returns `String` - The system color setting in RGB hexadecimal form (`#ABCDEF`).
 See the [Windows docs][windows-colors] for more details.
 
+[windows-colors]:https://msdn.microsoft.com/en-us/library/windows/desktop/ms724371(v=vs.85).aspx
+
 ### `systemPreferences.isInvertedColorScheme()` _Windows_
 
-Returns `Boolean` - `true` if an inverted color scheme, such as a high contrast
-theme, is active, `false` otherwise.
+Returns `Boolean` - `true` if an inverted color scheme (a high contrast color scheme with light text and dark backgrounds) is active, `false` otherwise.
 
-[windows-colors]:https://msdn.microsoft.com/en-us/library/windows/desktop/ms724371(v=vs.85).aspx
+### `systemPreferences.isHighContrastColorScheme()` _Windows_
+
+Returns `Boolean` - `true` if a high contrast theme is active, `false` otherwise.
 
 ### `systemPreferences.getEffectiveAppearance()` _macOS_
 
@@ -298,7 +312,6 @@ using `electron-packager` or `electron-forge` just set the `enableDarwinDarkMode
 packager option to `true`.  See the [Electron Packager API](https://github.com/electron-userland/electron-packager/blob/master/docs/api.md#darwindarkmodesupport)
 for more details.
 
-
 ### `systemPreferences.getAppLevelAppearance()` _macOS_
 
 Returns `String` | `null` - Can be `dark`, `light` or `unknown`.
@@ -313,3 +326,27 @@ You can use the `setAppLevelAppearance` API to set this value.
 
 Sets the appearance setting for your application, this should override the
 system default and override the value of `getEffectiveAppearance`.
+
+### `systemPreferences.isTrustedAccessibilityClient(prompt)` _macOS_
+
+* `prompt` Boolean - whether or not the user will be informed via prompt if the current process is untrusted.
+
+Returns `Boolean` - `true` if the current process is a trusted accessibility client and `false` if it is not.
+
+### `systemPreferences.getMediaAccessStatus(mediaType)` _macOS_
+
+* `mediaType` String - `microphone` or `camera`.
+
+Returns `String` - Can be `not-determined`, `granted`, `denied`, `restricted` or `unknown`.
+
+This user consent was not required until macOS 10.14 Mojave, so this method will always return `granted` if your system is running 10.13 High Sierra or lower.
+
+### `systemPreferences.askForMediaAccess(mediaType)` _macOS_
+
+* `mediaType` String - the type of media being requested; can be `microphone`, `camera`.
+
+Returns `Promise<Boolean>` - A promise that resolves with `true` if consent was granted and `false` if it was denied. If an invalid `mediaType` is passed, the promise will be rejected. If an access request was denied and later is changed through the System Preferences pane, a restart of the app will be required for the new permissions to take effect. If access has already been requested and denied, it _must_ be changed through the preference pane; an alert will not pop up and the promise will resolve with the existing access status.
+
+**Important:** In order to properly leverage this API, you [must set](https://developer.apple.com/documentation/avfoundation/cameras_and_media_capture/requesting_authorization_for_media_capture_on_macos?language=objc) the `NSMicrophoneUsageDescription` and `NSCameraUsageDescription` strings in your app's `Info.plist` file. The values for these keys will be used to populate the permission dialogs so that the user will be properly informed as to the purpose of the permission request. See [Electron Application Distribution](https://electronjs.org/docs/tutorial/application-distribution#macos) for more information about how to set these in the context of Electron.
+
+This user consent was not required until macOS 10.14 Mojave, so this method will always return `true` if your system is running 10.13 High Sierra or lower.

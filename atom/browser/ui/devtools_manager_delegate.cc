@@ -5,6 +5,7 @@
 #include "atom/browser/ui/devtools_manager_delegate.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "base/bind.h"
@@ -13,7 +14,6 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
-#include "brightray/common/content_client.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_frontend_host.h"
 #include "content/public/browser/devtools_socket_factory.h"
@@ -94,11 +94,13 @@ DevToolsManagerDelegate::~DevToolsManagerDelegate() {}
 
 void DevToolsManagerDelegate::Inspect(content::DevToolsAgentHost* agent_host) {}
 
-bool DevToolsManagerDelegate::HandleCommand(
+void DevToolsManagerDelegate::HandleCommand(
     content::DevToolsAgentHost* agent_host,
     content::DevToolsAgentHostClient* client,
-    base::DictionaryValue* command) {
-  return false;
+    std::unique_ptr<base::DictionaryValue> command,
+    const std::string& message,
+    NotHandledCallback callback) {
+  std::move(callback).Run(std::move(command), message);
 }
 
 scoped_refptr<content::DevToolsAgentHost>

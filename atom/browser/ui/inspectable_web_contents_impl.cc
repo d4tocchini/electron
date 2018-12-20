@@ -59,9 +59,9 @@ const char kChromeUIDevToolsRemoteFrontendBase[] =
     "https://chrome-devtools-frontend.appspot.com/";
 const char kChromeUIDevToolsRemoteFrontendPath[] = "serve_file";
 
-const char kDevToolsBoundsPref[] = "brightray.devtools.bounds";
-const char kDevToolsZoomPref[] = "brightray.devtools.zoom";
-const char kDevToolsPreferences[] = "brightray.devtools.preferences";
+const char kDevToolsBoundsPref[] = "electron.devtools.bounds";
+const char kDevToolsZoomPref[] = "electron.devtools.zoom";
+const char kDevToolsPreferences[] = "electron.devtools.preferences";
 
 const char kFrontendHostId[] = "id";
 const char kFrontendHostMethod[] = "method";
@@ -141,11 +141,11 @@ class ResponseWriter : public net::URLFetcherResponseWriter {
   ~ResponseWriter() override;
 
   // URLFetcherResponseWriter overrides:
-  int Initialize(const net::CompletionCallback& callback) override;
+  int Initialize(net::CompletionOnceCallback callback) override;
   int Write(net::IOBuffer* buffer,
             int num_bytes,
-            const net::CompletionCallback& callback) override;
-  int Finish(int net_error, const net::CompletionCallback& callback) override;
+            net::CompletionOnceCallback callback) override;
+  int Finish(int net_error, net::CompletionOnceCallback callback) override;
 
  private:
   base::WeakPtr<InspectableWebContentsImpl> bindings_;
@@ -161,13 +161,13 @@ ResponseWriter::ResponseWriter(
 
 ResponseWriter::~ResponseWriter() {}
 
-int ResponseWriter::Initialize(const net::CompletionCallback& callback) {
+int ResponseWriter::Initialize(net::CompletionOnceCallback callback) {
   return net::OK;
 }
 
 int ResponseWriter::Write(net::IOBuffer* buffer,
                           int num_bytes,
-                          const net::CompletionCallback& callback) {
+                          net::CompletionOnceCallback callback) {
   std::string chunk = std::string(buffer->data(), num_bytes);
   if (!base::IsStringUTF8(chunk))
     return num_bytes;
@@ -184,7 +184,7 @@ int ResponseWriter::Write(net::IOBuffer* buffer,
 }
 
 int ResponseWriter::Finish(int net_error,
-                           const net::CompletionCallback& callback) {
+                           net::CompletionOnceCallback callback) {
   return net::OK;
 }
 
@@ -306,12 +306,14 @@ void InspectableWebContentsImpl::SetDevToolsWebContents(
     external_devtools_web_contents_ = devtools;
 }
 
-void InspectableWebContentsImpl::ShowDevTools() {
+void InspectableWebContentsImpl::ShowDevTools(bool activate) {
   if (embedder_message_dispatcher_) {
     if (managed_devtools_web_contents_)
-      view_->ShowDevTools();
+      view_->ShowDevTools(activate);
     return;
   }
+
+  activate_ = activate;
 
   // Show devtools only after it has done loading, this is to make sure the
   // SetIsDocked is called *BEFORE* ShowDevTools.
@@ -430,7 +432,7 @@ void InspectableWebContentsImpl::CloseWindow() {
 void InspectableWebContentsImpl::LoadCompleted() {
   frontend_loaded_ = true;
   if (managed_devtools_web_contents_)
-    view_->ShowDevTools();
+    view_->ShowDevTools(activate_);
 
   // If the devtools can dock, "SetIsDocked" will be called by devtools itself.
   if (!can_dock_) {
@@ -501,7 +503,7 @@ void InspectableWebContentsImpl::LoadNetworkResource(
 void InspectableWebContentsImpl::SetIsDocked(const DispatchCallback& callback,
                                              bool docked) {
   if (managed_devtools_web_contents_)
-    view_->SetIsDocked(docked);
+    view_->SetIsDocked(docked, activate_);
   if (!callback.is_null())
     callback.Run(nullptr);
 }
@@ -512,8 +514,9 @@ void InspectableWebContentsImpl::ShowItemInFolder(
     const std::string& file_system_path) {
   if (file_system_path.empty())
     return;
+
   base::FilePath path = base::FilePath::FromUTF8Unsafe(file_system_path);
-  platform_util::ShowItemInFolder(path);
+  platform_util::OpenItem(path);
 }
 
 void InspectableWebContentsImpl::SaveToFile(const std::string& url,

@@ -29,6 +29,7 @@
 #include "third_party/blink/public/web/web_script_source.h"
 #include "third_party/blink/public/web/web_view.h"
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
+#include "url/url_util.h"
 
 #include "atom/common/node_includes.h"
 
@@ -188,8 +189,10 @@ void WebFrame::SetLayoutZoomLevelLimits(double min_level, double max_level) {
 }
 
 v8::Local<v8::Value> WebFrame::RegisterEmbedderCustomElement(
+    v8::Local<v8::Object> context,
     const base::string16& name,
     v8::Local<v8::Object> options) {
+  v8::Context::Scope context_scope(context->CreationContext());
   return web_frame_->GetDocument().RegisterEmbedderCustomElement(
       blink::WebString::FromUTF16(name), options);
 }
@@ -276,7 +279,7 @@ void WebFrame::RegisterURLSchemeAsPrivileged(const std::string& scheme,
         privileged_scheme);
   }
   if (corsEnabled) {
-    blink::SchemeRegistry::RegisterURLSchemeAsCORSEnabled(privileged_scheme);
+    url::AddCORSEnabledScheme(scheme.c_str());
   }
 }
 

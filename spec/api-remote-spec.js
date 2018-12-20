@@ -8,6 +8,7 @@ const { closeWindow } = require('./window-helpers')
 const { resolveGetters } = require('./assert-helpers')
 
 const { remote, ipcRenderer } = require('electron')
+const { ipcMain, BrowserWindow } = remote
 const { expect } = chai
 
 chai.use(dirtyChai)
@@ -428,9 +429,10 @@ describe('remote module', () => {
     })
 
     it('emits unhandled rejection events in the renderer process', (done) => {
-      window.addEventListener('unhandledrejection', function (event) {
+      window.addEventListener('unhandledrejection', function handler (event) {
         event.preventDefault()
         assert.strictEqual(event.reason.message, 'rejected')
+        window.removeEventListener('unhandledrejection', handler)
         done()
       })
 
@@ -510,6 +512,25 @@ describe('remote module', () => {
         assert.ok(error.from)
         assert.deepStrictEqual(error.cause, ...resolveGetters(err))
       }
+    })
+  })
+
+  describe('remote function in renderer', () => {
+    afterEach(() => {
+      ipcMain.removeAllListeners('done')
+    })
+
+    it('works when created in preload script', (done) => {
+      ipcMain.once('done', () => w.close())
+      const preload = path.join(fixtures, 'module', 'preload-remote-function.js')
+      w = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          preload: preload
+        }
+      })
+      w.once('closed', () => done())
+      w.loadURL('about:blank')
     })
   })
 })

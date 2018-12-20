@@ -8,12 +8,14 @@
 #include <memory>
 #include <string>
 
-#include "brightray/common/content_client.h"
-#include "brightray/common/main_delegate.h"
+#include "content/public/app/content_main_delegate.h"
+#include "content/public/common/content_client.h"
 
 namespace atom {
 
-class AtomMainDelegate : public brightray::MainDelegate {
+void LoadResourceBundle(const std::string& locale);
+
+class AtomMainDelegate : public content::ContentMainDelegate {
  public:
   AtomMainDelegate();
   ~AtomMainDelegate() override;
@@ -22,7 +24,7 @@ class AtomMainDelegate : public brightray::MainDelegate {
   // content::ContentMainDelegate:
   bool BasicStartupComplete(int* exit_code) override;
   void PreSandboxStartup() override;
-  void PreContentInitialization() override;
+  void PreCreateMainMessageLoop() override;
   content::ContentBrowserClient* CreateContentBrowserClient() override;
   content::ContentRendererClient* CreateContentRendererClient() override;
   content::ContentUtilityClient* CreateContentUtilityClient() override;
@@ -33,20 +35,17 @@ class AtomMainDelegate : public brightray::MainDelegate {
   bool ShouldSendMachPort(const std::string& process_type) override;
   bool DelaySandboxInitialization(const std::string& process_type) override;
 #endif
-
-  // brightray::MainDelegate:
-  std::unique_ptr<brightray::ContentClient> CreateContentClient() override;
-#if defined(OS_MACOSX)
-  void OverrideChildProcessPath() override;
-  void OverrideFrameworkBundlePath() override;
-#endif
+  bool ShouldLockSchemeRegistry() override;
 
  private:
 #if defined(OS_MACOSX)
+  void OverrideChildProcessPath();
+  void OverrideFrameworkBundlePath();
   void SetUpBundleOverrides();
 #endif
 
   std::unique_ptr<content::ContentBrowserClient> browser_client_;
+  std::unique_ptr<content::ContentClient> content_client_;
   std::unique_ptr<content::ContentRendererClient> renderer_client_;
   std::unique_ptr<content::ContentUtilityClient> utility_client_;
 

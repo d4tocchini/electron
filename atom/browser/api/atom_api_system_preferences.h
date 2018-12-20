@@ -9,6 +9,7 @@
 #include <string>
 
 #include "atom/browser/api/event_emitter.h"
+#include "atom/common/promise_util.h"
 #include "base/callback.h"
 #include "base/values.h"
 #include "native_mate/handle.h"
@@ -67,7 +68,8 @@ class SystemPreferences : public mate::EventEmitter<SystemPreferences>
       base::Callback<void(const std::string&, const base::DictionaryValue&)>;
 
   void PostNotification(const std::string& name,
-                        const base::DictionaryValue& user_info);
+                        const base::DictionaryValue& user_info,
+                        mate::Arguments* args);
   int SubscribeNotification(const std::string& name,
                             const NotificationCallback& callback);
   void UnsubscribeNotification(int id);
@@ -90,6 +92,15 @@ class SystemPreferences : public mate::EventEmitter<SystemPreferences>
   void RemoveUserDefault(const std::string& name);
   bool IsSwipeTrackingFromScrollEventsEnabled();
 
+  bool IsTrustedAccessibilityClient(bool prompt);
+
+  // TODO(codebytere): Write tests for these methods once we
+  // are running tests on a Mojave machine
+  std::string GetMediaAccessStatus(const std::string& media_type,
+                                   mate::Arguments* args);
+  v8::Local<v8::Promise> AskForMediaAccess(v8::Isolate* isolate,
+                                           const std::string& media_type);
+
   // TODO(MarshallOfSound): Write tests for these methods once we
   // are running tests on a Mojave machine
   v8::Local<v8::Value> GetEffectiveAppearance(v8::Isolate* isolate);
@@ -98,15 +109,13 @@ class SystemPreferences : public mate::EventEmitter<SystemPreferences>
 #endif
   bool IsDarkMode();
   bool IsInvertedColorScheme();
+  bool IsHighContrastColorScheme();
 
  protected:
   explicit SystemPreferences(v8::Isolate* isolate);
   ~SystemPreferences() override;
 
 #if defined(OS_MACOSX)
-  void DoPostNotification(const std::string& name,
-                          const base::DictionaryValue& user_info,
-                          NotificationCenterKind kind);
   int DoSubscribeNotification(const std::string& name,
                               const NotificationCallback& callback,
                               NotificationCenterKind kind);
@@ -138,6 +147,8 @@ class SystemPreferences : public mate::EventEmitter<SystemPreferences>
   std::string current_color_;
 
   bool invertered_color_scheme_;
+
+  bool high_contrast_color_scheme_;
 
   std::unique_ptr<gfx::ScopedSysColorChangeListener> color_change_listener_;
 #endif

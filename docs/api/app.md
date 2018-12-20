@@ -398,6 +398,19 @@ non-minimized.
 This event is guaranteed to be emitted after the `ready` event of `app`
 gets emitted.
 
+**Note:** Extra command line arguments might be added by Chromium,
+such as `--original-process-start-time`.
+
+### Event: 'desktop-capturer-get-sources'
+
+Returns:
+
+* `event` Event
+* `webContents` [WebContents](web-contents.md)
+
+Emitted when `desktopCapturer.getSources()` is called in the renderer process of `webContents`.
+Calling `event.preventDefault()` will make it return empty sources.
+
 ### Event: 'remote-require'
 
 Returns:
@@ -552,8 +565,29 @@ On _Windows_, there a 2 kinds of icons:
 - Icons associated with certain file extensions, like `.mp3`, `.png`, etc.
 - Icons inside the file itself, like `.exe`, `.dll`, `.ico`.
 
-On _Linux_ and _macOS_, icons depend on the application associated with file
-mime type.
+On _Linux_ and _macOS_, icons depend on the application associated with file mime type.
+
+**[Deprecated Soon](promisification.md)**
+
+### `app.getFileIcon(path[, options])`
+
+* `path` String
+* `options` Object (optional)
+  * `size` String
+    * `small` - 16x16
+    * `normal` - 32x32
+    * `large` - 48x48 on _Linux_, 32x32 on _Windows_, unsupported on _macOS_.
+
+Returns `Promise<NativeImage>` - fulfilled with the app's icon, which is a [NativeImage](native-image.md).
+
+Fetches a path's associated icon.
+
+On _Windows_, there a 2 kinds of icons:
+
+- Icons associated with certain file extensions, like `.mp3`, `.png`, etc.
+- Icons inside the file itself, like `.exe`, `.dll`, `.ico`.
+
+On _Linux_ and _macOS_, icons depend on the application associated with file mime type.
 
 ### `app.setPath(name, path)`
 
@@ -602,6 +636,11 @@ To set the locale, you'll want to use a command line switch at app startup, whic
 `locales` folder.
 
 **Note:** On Windows you have to call it after the `ready` events gets emitted.
+
+### `app.getLocaleCountryCode()`
+Returns `string` - User operating system's locale two-letter [ISO 3166](https://www.iso.org/iso-3166-country-codes.html) country code. The value is taken from native OS APIs.
+
+**Note:** When unable to detect locale country code, it returns empty string.
 
 ### `app.addRecentDocument(path)` _macOS_ _Windows_
 
@@ -1064,17 +1103,23 @@ details. Disabled by default.
 
 **Note:** Rendering accessibility tree can significantly affect the performance of your app. It should not be enabled by default.
 
-### `app.setAboutPanelOptions(options)` _macOS_
+### `app.showAboutPanel` _macOS_ _Linux_
+
+Show the app's about panel options. These options can be overridden with `app.setAboutPanelOptions(options)`.
+
+### `app.setAboutPanelOptions(options)` _macOS_ _Linux_
 
 * `options` Object
   * `applicationName` String (optional) - The app's name.
   * `applicationVersion` String (optional) - The app's version.
   * `copyright` String (optional) - Copyright information.
-  * `credits` String (optional) - Credit information.
-  * `version` String (optional) - The app's build version number.
+  * `version` String (optional) - The app's build version number. _macOS_
+  * `credits` String (optional) - Credit information. _macOS_
+  * `website` String (optional) - The app's website. _Linux_
+  * `iconPath` String (optional) - Path to the app's icon. _Linux_
 
 Set the about panel options. This will override the values defined in the app's
-`.plist` file. See the [Apple docs][about-panel-options] for more details.
+`.plist` file on MacOS. See the [Apple docs][about-panel-options] for more details. On Linux, values must be set in order to be shown; there are no defaults.
 
 ### `app.startAccessingSecurityScopedResource(bookmarkData)` _macOS (mas)_
 

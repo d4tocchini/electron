@@ -1,14 +1,17 @@
 const assert = require('assert')
+const chai = require('chai')
 const http = require('http')
 const https = require('https')
 const path = require('path')
 const fs = require('fs')
 const send = require('send')
 const auth = require('basic-auth')
+const ChildProcess = require('child_process')
 const { closeWindow } = require('./window-helpers')
 
 const { ipcRenderer, remote } = require('electron')
 const { ipcMain, session, BrowserWindow, net } = remote
+const { expect } = chai
 
 /* The whole session API doesn't use standard callbacks */
 /* eslint-disable standard/no-callback-literal */
@@ -70,8 +73,7 @@ describe('session module', () => {
       })
       server.listen(0, '127.0.0.1', () => {
         const port = server.address().port
-        w.loadURL(`${url}:${port}`)
-        w.webContents.on('did-finish-load', () => {
+        w.webContents.once('did-finish-load', () => {
           w.webContents.session.cookies.get({ url }, (error, list) => {
             if (error) return done(error)
             for (let i = 0; i < list.length; i++) {
@@ -87,6 +89,7 @@ describe('session module', () => {
             done('Can\'t find cookie')
           })
         })
+        w.loadURL(`${url}:${port}`)
       })
     })
 
@@ -211,6 +214,33 @@ describe('session module', () => {
         })
       })
     })
+
+    it('should survive an app restart for persistent partition', async () => {
+      const appPath = path.join(__dirname, 'fixtures', 'api', 'cookie-app')
+      const electronPath = remote.getGlobal('process').execPath
+
+      const test = (result, phase) => {
+        return new Promise((resolve, reject) => {
+          let output = ''
+
+          const appProcess = ChildProcess.spawn(
+            electronPath,
+            [appPath],
+            { env: { PHASE: phase, ...process.env } }
+          )
+
+          appProcess.stdout.on('data', (data) => { output += data })
+          appProcess.stdout.on('end', () => {
+            output = output.replace(/(\r\n|\n|\r)/gm, '')
+            assert.strictEqual(output, result)
+            resolve()
+          })
+        })
+      }
+
+      await test('011', 'one')
+      await test('110', 'two')
+    })
   })
 
   describe('ses.clearStorageData(options)', () => {
@@ -221,7 +251,6 @@ describe('session module', () => {
         assert.strictEqual(count, 0)
         done()
       })
-      w.loadFile(path.join(fixtures, 'api', 'localstorage.html'))
       w.webContents.on('did-finish-load', () => {
         const options = {
           origin: 'file://',
@@ -232,6 +261,7 @@ describe('session module', () => {
           w.webContents.send('getcount')
         })
       })
+      w.loadFile(path.join(fixtures, 'api', 'localstorage.html'))
     })
   })
 
@@ -358,10 +388,10 @@ describe('session module', () => {
         const port = downloadServer.address().port
         ipcRenderer.sendSync('set-download-option', false, false)
         webview = new WebView()
-        webview.src = `file://${fixtures}/api/blank.html`
         webview.addEventListener('did-finish-load', () => {
           webview.downloadURL(`${url}:${port}/`)
         })
+        webview.src = `file://${fixtures}/api/blank.html`
         ipcRenderer.once('download-done', (event, state, url,
           mimeType, receivedBytes,
           totalBytes, disposition,
@@ -421,6 +451,38 @@ describe('session module', () => {
       })
     })
 
+    it('can set options for the save dialog', (done) => {
+      downloadServer.listen(0, '127.0.0.1', () => {
+        const filePath = path.join(__dirname, 'fixtures', 'mock.pdf')
+        const port = downloadServer.address().port
+        const options = {
+          window: null,
+          title: 'title',
+          message: 'message',
+          buttonLabel: 'buttonLabel',
+          nameFieldLabel: 'nameFieldLabel',
+          defaultPath: '/',
+          filters: [{
+            name: '1', extensions: ['.1', '.2']
+          }, {
+            name: '2', extensions: ['.3', '.4', '.5']
+          }],
+          showsTagField: true,
+          securityScopedBookmarks: true
+        }
+
+        ipcRenderer.sendSync('set-download-option', true, false, filePath, options)
+        w.webContents.downloadURL(`${url}:${port}`)
+        ipcRenderer.once('download-done', (event, state, url,
+          mimeType, receivedBytes,
+          totalBytes, disposition,
+          filename, savePath, dialogOptions) => {
+          expect(dialogOptions).to.deep.equal(options)
+          done()
+        })
+      })
+    })
+
     describe('when a save path is specified and the URL is unavailable', () => {
       it('does not display a save dialog and reports the done state as interrupted', (done) => {
         ipcRenderer.sendSync('set-download-option', false, false)
@@ -469,7 +531,7 @@ describe('session module', () => {
       })
     })
 
-    xit('handles requests from partition', (done) => {
+    it('handles requests from partition', (done) => {
       w.webContents.on('did-finish-load', () => done())
       w.loadURL(`${protocolName}://fake-host`)
     })
@@ -479,8 +541,13 @@ describe('session module', () => {
     let server = null
     let customSession = null
 
-    beforeEach(() => {
+    beforeEach((done) => {
       customSession = session.fromPartition('proxyconfig')
+      // FIXME(deepak1556): This is just a hack to force
+      // creation of request context which in turn initializes
+      // the network context, can be removed with network
+      // service enabled.
+      customSession.clearHostResolverCache(() => done())
     })
 
     afterEach(() => {
@@ -697,7 +764,7 @@ describe('session module', () => {
         const downloadUrl = `http://127.0.0.1:${port}/assets/logo.png`
         const callback = (event, state, url, mimeType,
           receivedBytes, totalBytes, disposition,
-          filename, savePath, urlChain,
+          filename, savePath, dialogOptions, urlChain,
           lastModifiedTime, eTag) => {
           if (state === 'cancelled') {
             const options = {

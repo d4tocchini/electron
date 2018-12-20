@@ -6,6 +6,41 @@ Breaking changes will be documented here, and deprecation warnings added to JS c
 
 The `FIXME` string is used in code comments to denote things that should be fixed for future releases. See https://github.com/electron/electron/search?q=fixme
 
+# Planned Breaking API Changes (6.0)
+
+## `electron.screen` in renderer process
+
+```js
+// Deprecated
+require('electron').screen
+// Replace with
+require('electron').remote.screen
+```
+
+## `require` in sandboxed renderers
+
+```js
+// Deprecated
+require('child_process')
+// Replace with
+require('electron').remote.require('child_process')
+
+// Deprecated
+require('fs')
+// Replace with
+require('electron').remote.require('fs')
+
+// Deprecated
+require('os')
+// Replace with
+require('electron').remote.require('os')
+
+// Deprecated
+require('path')
+// Replace with
+require('electron').remote.require('path')
+```
+
 # Planned Breaking API Changes (5.0)
 
 ## `new BrowserWindow({ webPreferences })`
@@ -18,6 +53,9 @@ The following `webPreferences` option default values are deprecated in favor of 
 | `nodeIntegration` | `true` | `false` |
 | `webviewTag` | `nodeIntegration` if set else `true` | `false` |
 
+## `nativeWindowOpen`
+
+Child windows opened with the `nativeWindowOpen` option will always have Node.js integration disabled.
 
 # Planned Breaking API Changes (4.0)
 
@@ -27,13 +65,13 @@ The following list includes the breaking API changes planned for Electron 4.0.
 
 ```js
 // Deprecated
-app.makeSingleInstance(function (argv, cwd) {
-
+app.makeSingleInstance((argv, cwd) => {
+  /* ... */
 })
 // Replace with
 app.requestSingleInstanceLock()
-app.on('second-instance', function (argv, cwd) {
-
+app.on('second-instance', (event, argv, cwd) => {
+  /* ... */
 })
 ```
 
@@ -54,6 +92,13 @@ app.getGPUInfo('complete')
 app.getGPUInfo('basic')
 ```
 
+## `win_delay_load_hook`
+
+When building native modules for windows, the `win_delay_load_hook` variable in
+the module's `binding.gyp` must be true (which is the default). If this hook is
+not present, then the native module will fail to load on Windows, with an error
+message like `Cannot find module`. See the [native module
+guide](/docs/tutorial/using-native-node-modules.md) for more.
 
 # Breaking API Changes (3.0)
 
@@ -168,11 +213,11 @@ screen.getPrimaryDisplay().workArea
 
 ```js
 // Deprecated
-ses.setCertificateVerifyProc(function (hostname, certificate, callback) {
+ses.setCertificateVerifyProc((hostname, certificate, callback) => {
   callback(true)
 })
 // Replace with
-ses.setCertificateVerifyProc(function (request, callback) {
+ses.setCertificateVerifyProc((request, callback) => {
   callback(0)
 })
 ```

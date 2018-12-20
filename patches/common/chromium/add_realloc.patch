@@ -1,4 +1,4 @@
-From 0e2864c50cb039dd2f8d9b9cc88ae26f5bd62581 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Shelley Vohr <shelley.vohr@gmail.com>
 Date: Thu, 20 Sep 2018 17:44:26 -0700
 Subject: add_realloc.patch
@@ -12,7 +12,7 @@ when we override ReallocateBufferMemory, so we therefore need to implement
 Realloc on the v8 side and correspondingly in gin.
 
 diff --git a/gin/array_buffer.cc b/gin/array_buffer.cc
-index f84934bfd712..fc23fef68b6f 100644
+index f84934bfd712dbad0e85d908165a5a4033bff170..fc23fef68b6fb9a4cccdf99bc427078faed2f62e 100644
 --- a/gin/array_buffer.cc
 +++ b/gin/array_buffer.cc
 @@ -43,6 +43,10 @@ void* ArrayBufferAllocator::AllocateUninitialized(size_t length) {
@@ -27,7 +27,7 @@ index f84934bfd712..fc23fef68b6f 100644
    free(data);
  }
 diff --git a/gin/array_buffer.h b/gin/array_buffer.h
-index 2aef366ac819..3c7d66c81032 100644
+index 2aef366ac8194aa261cbca6abc051f7da8a988d3..3c7d66c81032636abcca4f1538ce9b7f4ddb2de2 100644
 --- a/gin/array_buffer.h
 +++ b/gin/array_buffer.h
 @@ -21,6 +21,7 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
@@ -39,10 +39,10 @@ index 2aef366ac819..3c7d66c81032 100644
  
    GIN_EXPORT static ArrayBufferAllocator* SharedInstance();
 diff --git a/third_party/blink/renderer/bindings/core/v8/v8_initializer.cc b/third_party/blink/renderer/bindings/core/v8/v8_initializer.cc
-index 83a6639306a9..8511e7d594ce 100644
+index de5c4b11829141913784fc3c7190ab86368cf675..f88a404c95c12ab5647bf88bd7be2504699b7ff7 100644
 --- a/third_party/blink/renderer/bindings/core/v8/v8_initializer.cc
 +++ b/third_party/blink/renderer/bindings/core/v8/v8_initializer.cc
-@@ -665,6 +665,10 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
+@@ -671,6 +671,10 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
          size, WTF::ArrayBufferContents::kDontInitialize);
    }
  
@@ -54,7 +54,7 @@ index 83a6639306a9..8511e7d594ce 100644
      WTF::ArrayBufferContents::FreeMemory(data);
    }
 diff --git a/third_party/blink/renderer/platform/wtf/typed_arrays/array_buffer_contents.cc b/third_party/blink/renderer/platform/wtf/typed_arrays/array_buffer_contents.cc
-index 053babce1051..e33d6d4ceb5a 100644
+index 83133e1a836d0c3b25e931e0c19ebcdb987173cf..2c64bd4d5cf3ecd71ee0711cecd1c149e8795797 100644
 --- a/third_party/blink/renderer/platform/wtf/typed_arrays/array_buffer_contents.cc
 +++ b/third_party/blink/renderer/platform/wtf/typed_arrays/array_buffer_contents.cc
 @@ -121,6 +121,11 @@ void* ArrayBufferContents::AllocateMemoryOrNull(size_t size,
@@ -70,10 +70,10 @@ index 053babce1051..e33d6d4ceb5a 100644
    Partitions::ArrayBufferPartition()->Free(data);
  }
 diff --git a/third_party/blink/renderer/platform/wtf/typed_arrays/array_buffer_contents.h b/third_party/blink/renderer/platform/wtf/typed_arrays/array_buffer_contents.h
-index 809229caa872..6248ad32d6b0 100644
+index a87a02bdaf4b7050752f05984ff1c0170f64a203..cf7f2940d48b03c51b997729fc7ea033dc0d1bfe 100644
 --- a/third_party/blink/renderer/platform/wtf/typed_arrays/array_buffer_contents.h
 +++ b/third_party/blink/renderer/platform/wtf/typed_arrays/array_buffer_contents.h
-@@ -178,6 +178,7 @@ class WTF_EXPORT ArrayBufferContents {
+@@ -187,6 +187,7 @@ class WTF_EXPORT ArrayBufferContents {
    void CopyTo(ArrayBufferContents& other);
  
    static void* AllocateMemoryOrNull(size_t, InitializationPolicy);
@@ -81,6 +81,3 @@ index 809229caa872..6248ad32d6b0 100644
    static void FreeMemory(void*);
    static DataHandle CreateDataHandle(size_t, InitializationPolicy);
    static void Initialize(
--- 
-2.17.0
-

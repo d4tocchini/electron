@@ -10,9 +10,9 @@ gclient_gn_args = [
 
 vars = {
   'chromium_version':
-    '69.0.3497.106',
+    '70.0.3538.110',
   'node_version':
-    '4d44266b78256449dd6ae86e419e3ec07257b569',
+    '1b192088522d10d126e5bb9316adae2a97add62a',
 
   'boto_version': 'f7574aa6cc2c819430c1f05e9a1a1a666ef8169b',
   'pyyaml_version': '3.12',
@@ -29,6 +29,13 @@ vars = {
 
   # Python interface to Amazon Web Services. Is used for releases only.
   'checkout_boto': False,
+
+  # To allow in-house builds to checkout those manually.
+  'checkout_chromium': True,
+  'checkout_node': True,
+
+  # It's only needed to parse the native tests configurations.
+  'checkout_pyyaml': False,
 
   # Python "requests" module is used for releases only.
   'checkout_requests': False,
@@ -52,12 +59,18 @@ vars = {
 }
 
 deps = {
-  'src':
-    (Var("chromium_git")) + '/chromium/src.git@' + (Var("chromium_version")),
-  'src/third_party/electron_node':
-    (Var("electron_git")) + '/node.git@' + (Var("node_version")),
-  'src/electron/vendor/pyyaml':
-    (Var("yaml_git")) + '/pyyaml.git@' + (Var("pyyaml_version")),
+  'src': {
+    'url': (Var("chromium_git")) + '/chromium/src.git@' + (Var("chromium_version")),
+    'condition': 'checkout_chromium',
+  },
+  'src/third_party/electron_node': {
+    'url': (Var("electron_git")) + '/node.git@' + (Var("node_version")),
+    'condition': 'checkout_node',
+  },
+  'src/electron/vendor/pyyaml': {
+    'url': (Var("yaml_git")) + '/pyyaml.git@' + (Var("pyyaml_version")),
+    'condition': 'checkout_pyyaml',
+  },
   'src/electron/vendor/boto': {
     'url': Var('boto_git') + '/boto.git' + '@' +  Var('boto_version'),
     'condition': 'checkout_boto',
@@ -71,13 +84,12 @@ deps = {
 hooks = [
   {
     'name': 'patch_chromium',
-    'condition': 'apply_patches',
+    'condition': 'checkout_chromium and apply_patches',
     'pattern': 'src/electron',
     'action': [
       'python',
-      'src/electron/script/apply-patches',
-      '--project-root=.',
-      '--commit',
+      'src/electron/script/apply_all_patches.py',
+      'src/electron/patches/common/config.json',
     ],
   },
   {

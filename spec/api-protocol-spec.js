@@ -320,6 +320,28 @@ describe('protocol module', () => {
       })
     })
 
+    it('sets custom headers', (done) => {
+      const handler = (request, callback) => callback({
+        path: filePath,
+        headers: { 'X-Great-Header': 'sogreat' }
+      })
+      protocol.registerFileProtocol(protocolName, handler, (error) => {
+        if (error) return done(error)
+        $.ajax({
+          url: protocolName + '://fake-host',
+          cache: false,
+          success: (data, status, request) => {
+            assert.strictEqual(data, String(fileContent))
+            assert.strictEqual(request.getResponseHeader('X-Great-Header'), 'sogreat')
+            done()
+          },
+          error: (xhr, errorType, error) => {
+            done(error)
+          }
+        })
+      })
+    })
+
     it('sends object as response', (done) => {
       const handler = (request, callback) => callback({ path: filePath })
       protocol.registerFileProtocol(protocolName, handler, (error) => {
@@ -475,6 +497,19 @@ describe('protocol module', () => {
         })
       })
     })
+
+    it('can access request headers', (done) => {
+      const handler = (request) => {
+        assert.ok('headers' in request)
+        done()
+      }
+      protocol.registerHttpProtocol(protocolName, handler, () => {
+        $.ajax({
+          url: protocolName + '://fake-host',
+          cache: false
+        })
+      })
+    })
   })
 
   describe('protocol.registerStreamProtocol', () => {
@@ -529,7 +564,7 @@ describe('protocol module', () => {
           cache: false,
           success: (data, _, request) => {
             assert.strictEqual(request.status, 200)
-            assert.strictEqual(request.getResponseHeader('x-electron'), 'a,b')
+            assert.strictEqual(request.getResponseHeader('x-electron'), 'a, b')
             assert.strictEqual(data, text)
             done()
           },
@@ -581,6 +616,36 @@ describe('protocol module', () => {
           cache: false,
           success: (data) => {
             assert.strictEqual(data['x-return-headers'], 'yes')
+            done()
+          },
+          error: (xhr, errorType, error) => {
+            done(error || new Error(`Request failed: ${xhr.status}`))
+          }
+        })
+      })
+    })
+
+    it('returns response multiple response headers with the same name', (done) => {
+      const handler = (request, callback) => {
+        callback({
+          headers: {
+            'header1': ['value1', 'value2'],
+            'header2': 'value3'
+          },
+          data: getStream()
+        })
+      }
+
+      protocol.registerStreamProtocol(protocolName, handler, (error) => {
+        if (error) return done(error)
+        $.ajax({
+          url: protocolName + '://fake-host',
+          cache: false,
+          success: (data, status, request) => {
+            // SUBTLE: when the response headers have multiple values it
+            // separates values by ", ". When the response headers are incorrectly
+            // converting an array to a string it separates values by ",".
+            assert.strictEqual(request.getAllResponseHeaders(), 'header1: value1, value2\r\nheader2: value3\r\n')
             done()
           },
           error: (xhr, errorType, error) => {
@@ -865,6 +930,16 @@ describe('protocol module', () => {
           customSession.webRequest.onBeforeRequest(null)
           done()
         })
+      })
+    })
+
+    it('can access request headers', (done) => {
+      const handler = (request) => {
+        assert.ok('headers' in request)
+        done()
+      }
+      protocol.interceptHttpProtocol('http', handler, () => {
+        fetch('http://fake-host')
       })
     })
   })

@@ -4,8 +4,6 @@ process.throwDeprecation = false
 const electron = require('electron')
 const { app, BrowserWindow, crashReporter, dialog, ipcMain, protocol, webContents } = electron
 
-const { Coverage } = require('electabul')
-
 const fs = require('fs')
 const path = require('path')
 const util = require('util')
@@ -85,15 +83,6 @@ global.permissionChecks = {
   reject: () => electron.session.defaultSession.setPermissionCheckHandler(() => false)
 }
 
-const coverage = new Coverage({
-  outputPath: path.join(__dirname, '..', '..', 'out', 'coverage')
-})
-coverage.setup()
-
-ipcMain.on('get-main-process-coverage', function (event) {
-  event.returnValue = global.__coverage__ || null
-})
-
 global.isCi = !!argv.ci
 if (global.isCi) {
   process.removeAllListeners('uncaughtException')
@@ -161,7 +150,7 @@ app.on('ready', function () {
   // For session's download test, listen 'will-download' event in browser, and
   // reply the result to renderer for verifying
   const downloadFilePath = path.join(__dirname, '..', 'fixtures', 'mock.pdf')
-  ipcMain.on('set-download-option', function (event, needCancel, preventDefault, filePath = downloadFilePath) {
+  ipcMain.on('set-download-option', function (event, needCancel, preventDefault, filePath = downloadFilePath, dialogOptions = {}) {
     window.webContents.session.once('will-download', function (e, item) {
       window.webContents.send('download-created',
         item.getState(),
@@ -187,6 +176,7 @@ app.on('ready', function () {
           item.resume()
         } else {
           item.setSavePath(filePath)
+          item.setSaveDialogOptions(dialogOptions)
         }
         item.on('done', function (e, state) {
           window.webContents.send('download-done',
@@ -198,6 +188,7 @@ app.on('ready', function () {
             item.getContentDisposition(),
             item.getFilename(),
             item.getSavePath(),
+            item.getSaveDialogOptions(),
             item.getURLChain(),
             item.getLastModifiedTime(),
             item.getETag())
@@ -239,6 +230,12 @@ app.on('ready', function () {
     if (!hasCallback) {
       event.returnValue = 'success'
     }
+  })
+})
+
+ipcMain.on('handle-next-desktop-capturer-get-sources', function (event) {
+  event.sender.once('desktop-capturer-get-sources', (event) => {
+    event.preventDefault()
   })
 })
 
@@ -350,26 +347,21 @@ ipcMain.on('disable-preload-on-next-will-attach-webview', (event, id) => {
 
 ipcMain.on('try-emit-web-contents-event', (event, id, eventName) => {
   const consoleWarn = console.warn
-  let warningMessage = null
   const contents = webContents.fromId(id)
   const listenerCountBefore = contents.listenerCount(eventName)
 
-  try {
-    console.warn = (message) => {
-      warningMessage = message
-    }
-    contents.emit(eventName, { sender: contents })
-  } finally {
+  console.warn = (warningMessage) => {
     console.warn = consoleWarn
+
+    const listenerCountAfter = contents.listenerCount(eventName)
+    event.returnValue = {
+      warningMessage,
+      listenerCountBefore,
+      listenerCountAfter
+    }
   }
 
-  const listenerCountAfter = contents.listenerCount(eventName)
-
-  event.returnValue = {
-    warningMessage,
-    listenerCountBefore,
-    listenerCountAfter
-  }
+  contents.emit(eventName, { sender: contents })
 })
 
 ipcMain.on('handle-uncaught-exception', (event, message) => {

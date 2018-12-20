@@ -5,6 +5,7 @@
 #include "atom/app/atom_main.h"
 
 #include <cstdlib>
+#include <memory>
 #include <vector>
 
 #if defined(OS_WIN)
@@ -24,10 +25,15 @@
 #include "base/win/windows_version.h"
 #include "content/public/app/sandbox_helper_win.h"
 #include "sandbox/win/src/sandbox_types.h"
-#elif defined(OS_LINUX)                   // defined(OS_WIN)
+#elif defined(OS_LINUX)  // defined(OS_WIN)
+#include <unistd.h>
+#include <cstdio>
 #include "atom/app/atom_main_delegate.h"  // NOLINT
 #include "content/public/app/content_main.h"
 #else  // defined(OS_LINUX)
+#include <mach-o/dyld.h>
+#include <unistd.h>
+#include <cstdio>
 #include "atom/app/atom_library_main.h"
 #endif  // defined(OS_MACOSX)
 
@@ -36,6 +42,10 @@
 #include "base/at_exit.h"
 #include "base/i18n/icu_util.h"
 #include "electron/buildflags/buildflags.h"
+
+#if defined(HELPER_EXECUTABLE)
+#include "sandbox/mac/seatbelt_exec.h"  // nogncheck
+#endif                                  // defined(HELPER_EXECUTABLE)
 
 namespace {
 
@@ -53,6 +63,25 @@ bool IsEnvSet(const char* name) {
   return indicator && indicator[0] != '\0';
 #endif
 }
+
+#if defined(OS_POSIX)
+void FixStdioStreams() {
+  // libuv may mark stdin/stdout/stderr as close-on-exec, which interferes
+  // with chromium's subprocess spawning. As a workaround, we detect if these
+  // streams are closed on startup, and reopen them as /dev/null if necessary.
+  // Otherwise, an unrelated file descriptor will be assigned as stdout/stderr
+  // which may cause various errors when attempting to write to them.
+  //
+  // For details see https://github.com/libuv/libuv/issues/2062
+  struct stat st;
+  if (fstat(STDIN_FILENO, &st) < 0 && errno == EBADF)
+    ignore_result(freopen("/dev/null", "r", stdin));
+  if (fstat(STDOUT_FILENO, &st) < 0 && errno == EBADF)
+    ignore_result(freopen("/dev/null", "w", stdout));
+  if (fstat(STDERR_FILENO, &st) < 0 && errno == EBADF)
+    ignore_result(freopen("/dev/null", "w", stderr));
+}
+#endif
 
 }  // namespace
 
@@ -155,6 +184,8 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, wchar_t* cmd, int) {
 #elif defined(OS_LINUX)  // defined(OS_WIN)
 
 int main(int argc, char* argv[]) {
+  FixStdioStreams();
+
 #if BUILDFLAG(ENABLE_RUN_AS_NODE)
   if (IsEnvSet(kRunAsNode)) {
     base::i18n::InitializeICU();
@@ -174,9 +205,40 @@ int main(int argc, char* argv[]) {
 #else  // defined(OS_LINUX)
 
 int main(int argc, char* argv[]) {
+  FixStdioStreams();
+
 #if BUILDFLAG(ENABLE_RUN_AS_NODE)
   if (IsEnvSet(kRunAsNode)) {
     return AtomInitializeICUandStartNode(argc, argv);
+  }
+#endif
+
+#if defined(HELPER_EXECUTABLE)
+  uint32_t exec_path_size = 0;
+  int rv = _NSGetExecutablePath(NULL, &exec_path_size);
+  if (rv != -1) {
+    fprintf(stderr, "_NSGetExecutablePath: get length failed\n");
+    abort();
+  }
+
+  std::unique_ptr<char[]> exec_path(new char[exec_path_size]);
+  rv = _NSGetExecutablePath(exec_path.get(), &exec_path_size);
+  if (rv != 0) {
+    fprintf(stderr, "_NSGetExecutablePath: get path failed\n");
+    abort();
+  }
+  sandbox::SeatbeltExecServer::CreateFromArgumentsResult seatbelt =
+      sandbox::SeatbeltExecServer::CreateFromArguments(exec_path.get(), argc,
+                                                       argv);
+  if (seatbelt.sandbox_required) {
+    if (!seatbelt.server) {
+      fprintf(stderr, "Failed to create seatbelt sandbox server.\n");
+      abort();
+    }
+    if (!seatbelt.server->InitializeSandbox()) {
+      fprintf(stderr, "Failed to initialize sandbox.\n");
+      abort();
+    }
   }
 #endif
 

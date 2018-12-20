@@ -663,6 +663,15 @@ Returns:
 Emitted when the associated window logs a console message. Will not be emitted
 for windows with *offscreen rendering* enabled.
 
+#### Event: 'desktop-capturer-get-sources'
+
+Returns:
+
+* `event` Event
+
+Emitted when `desktopCapturer.getSources()` is called in the renderer process.
+Calling `event.preventDefault()` will make it return empty sources.
+
 #### Event: 'remote-require'
 
 Returns:
@@ -697,6 +706,11 @@ Custom value can be returned by setting `event.returnValue`.
   * `postData` ([UploadRawData[]](structures/upload-raw-data.md) | [UploadFile[]](structures/upload-file.md) | [UploadBlob[]](structures/upload-blob.md)) (optional)
   * `baseURLForDataURL` String (optional) - Base url (with trailing path separator) for files to be loaded by the data url. This is needed only if the specified `url` is a data url and needs to load other files.
 
+Returns `Promise<void>` - the promise will resolve when the page has finished loading
+(see [`did-finish-load`](web-contents.md#event-did-finish-load)), and rejects
+if the page fails to load (see
+[`did-fail-load`](web-contents.md#event-did-fail-load)).
+
 Loads the `url` in the window. The `url` must contain the protocol prefix,
 e.g. the `http://` or `file://`. If the load should bypass http cache then
 use the `pragma` header to achieve it.
@@ -714,6 +728,10 @@ webContents.loadURL('https://github.com', options)
   * `query` Object (optional) - Passed to `url.format()`.
   * `search` String (optional) - Passed to `url.format()`.
   * `hash` String (optional) - Passed to `url.format()`.
+
+Returns `Promise<void>` - the promise will resolve when the page has finished loading
+(see [`did-finish-load`](web-contents.md#event-did-finish-load)), and rejects
+if the page fails to load (see [`did-fail-load`](web-contents.md#event-did-fail-load)).
 
 Loads the given file in the window, `filePath` should be a path to
 an HTML file relative to the root of your application.  For instance
@@ -939,6 +957,12 @@ Sends a request to get current zoom level, the `callback` will be called with
 
 Sets the maximum and minimum pinch-to-zoom level.
 
+> **NOTE**: Visual zoom is disabled by default in Electron. To re-enable it, call:
+>
+> ```js
+> contents.setVisualZoomLevelLimits(1, 3)
+> ```
+
 #### `contents.setLayoutZoomLevelLimits(minimumLevel, maximumLevel)`
 
 * `minimumLevel` Number
@@ -1050,14 +1074,23 @@ console.log(requestId)
 
 #### `contents.capturePage([rect, ]callback)`
 
-* `rect` [Rectangle](structures/rectangle.md) (optional) - The area of the page to be captured.
+* `rect` [Rectangle](structures/rectangle.md) (optional) - The bounds to capture
 * `callback` Function
   * `image` [NativeImage](native-image.md)
 
 Captures a snapshot of the page within `rect`. Upon completion `callback` will
-be called with `callback(image)`. The `image` is an instance of
-[NativeImage](native-image.md) that stores data of the snapshot. Omitting
-`rect` will capture the whole visible page.
+be called with `callback(image)`. The `image` is an instance of [NativeImage](native-image.md)
+that stores data of the snapshot. Omitting `rect` will capture the whole visible page.
+
+**[Deprecated Soon](promisification.md)**
+
+#### `contents.capturePage([rect])`
+
+* `rect` [Rectangle](structures/rectangle.md) (optional) - The area of the page to be captured.
+
+* Returns `Promise<NativeImage>` - Resolves with a [NativeImage](native-image.md)
+
+Captures a snapshot of the page within `rect`. Omitting `rect` will capture the whole visible page.
 
 #### `contents.hasServiceWorker(callback)`
 
@@ -1106,7 +1139,7 @@ Use `page-break-before: always; ` CSS style to force to print to a new page.
 * `options` Object
   * `marginsType` Integer (optional) - Specifies the type of margins to use. Uses 0 for
     default margin, 1 for no margin, and 2 for minimum margin.
-  * `pageSize` String (optional) - Specify page size of the generated PDF. Can be `A3`,
+  * `pageSize` String | Size (optional) - Specify page size of the generated PDF. Can be `A3`,
     `A4`, `A5`, `Legal`, `Letter`, `Tabloid` or an Object containing `height`
     and `width` in microns.
   * `printBackground` Boolean (optional) - Whether to print CSS backgrounds.
@@ -1245,8 +1278,10 @@ app.once('ready', () => {
 
 * `options` Object (optional)
   * `mode` String - Opens the devtools with specified dock state, can be
-  `right`, `bottom`, `undocked`, `detach`. Defaults to last used dock state.
-  In `undocked` mode it's possible to dock back. In `detach` mode it's not.
+    `right`, `bottom`, `undocked`, `detach`. Defaults to last used dock state.
+    In `undocked` mode it's possible to dock back. In `detach` mode it's not.
+  * `activate` Boolean (optional) - Whether to bring the opened devtools window
+    to the foreground. The default is `true`.
 
 Opens the devtools.
 
